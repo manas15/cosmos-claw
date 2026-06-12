@@ -12,9 +12,9 @@
 
 ▶️ **[Watch the 60s demo on X](https://x.com/i/status/2065370878519468221)** &nbsp;·&nbsp; or play it inline below 👇
 
-</div>
+<video src="https://github.com/manas15/livehere/raw/main/assets/demo.mp4" controls muted loop playsinline width="80%"></video>
 
-https://github.com/manas15/livehere/raw/main/assets/demo.mp4
+</div>
 
 ---
 
