@@ -1,27 +1,89 @@
-# LiveHere
+<div align="center">
 
-> See the lease, not just the layout.
+# 🏠 LiveHere
 
-Turn listing photos + a short prompt into a shareable **“day in the life”** MP4
-preview of what living in a place could feel like — morning light, afternoon
-calm, evening wind-down, with a closing lease/availability card.
+### See the lease, not just the layout.
 
-This is the **simplest first version**: a local web app that runs entirely on
-your Mac with **no GPU and no cloud cost**. Video is produced by a local
-FFmpeg-based generator (Ken Burns motion + time-of-day color grade + captions).
+**Turn raw listing photos into a 30-second cinematic trailer that makes the deal.**
 
-The real world-model backend (**NVIDIA Cosmos 3 Nano on Nebius GPU**) is wired
-in behind a clean adapter — see [Switching to Cosmos](#switching-to-cosmos).
+*Built for the **Yacht Hackathon** — by Composio, Nebius & Tavily.*
+
+[![Watch the demo](assets/demo-poster.jpg)](https://x.com/i/status/2065370878519468221)
+
+▶️ **[Watch the 60s demo on X](https://x.com/i/status/2065370878519468221)** &nbsp;·&nbsp; or play it inline below 👇
+
+</div>
+
+https://github.com/manas15/livehere/raw/main/assets/demo.mp4
 
 ---
 
-## Why not run Cosmos locally?
+## The pitch
 
-Cosmos 3 Nano (16B) requires an **NVIDIA CUDA GPU** (Ampere/Hopper/Blackwell)
-and ~17+ GiB of VRAM. It **cannot run on Apple Silicon**. The project is
-designed to run Cosmos on a Nebius cloud GPU and call it over an
-OpenAI-compatible API. The local FFmpeg generator lets us build and demo the
-entire product experience first, then flip a switch for real generation.
+**30 seconds.** That's all a renter gives a listing before they swipe away.
+
+LiveHere turns raw listing photos into a cinematic trailer that makes the deal in
+those 30 seconds — **location, neighborhood, vibe, and price**, all in one
+scroll-stopping cut. Drop in the photos, and out comes a property trailer a
+renter actually wants to watch.
+
+> Looking forward to expanding this on the Yacht — SF is *soooo* amazing 🌉⛵️
+
+---
+
+## The stack
+
+| Layer | What we used |
+|-------|--------------|
+| 🎥 **Video model** | **NVIDIA Cosmos 3 Nano** — image→video, **self-deployed by us** |
+| ⚡ **Compute** | **[Nebius AI Cloud](https://nebius.com)** — NVIDIA® **H200 NVLink** GPUs |
+| 🔎 **Neighborhood research** | **[Tavily](https://tavily.com)** — enriches each property with real local context |
+| 🎬 **Director** | **GPT-4o (vision)** — reads the photos and writes the storyboard |
+| 🗺️ **Maps & info cards** | **OpenStreetMap** — location, transit & nearby spots |
+| 🔊 **Audio** | **OpenAI TTS** voiceover + a soft synthesized music bed |
+| 🧩 **App** | **FastAPI** + a per-listing Studio UI, FFmpeg for finishing/stitching |
+
+We didn't just call a hosted API — we **stood up Cosmos 3 Nano ourselves** on
+Nebius H200 NVLink GPUs (vLLM-Omni, OpenAI-compatible) and drove it end-to-end.
+Tavily researches the surrounding neighborhood so every second of the trailer
+carries the context a renter needs to say *yes*.
+
+<sub>Shout-out to the partners: **@ship_builders · @nebiusai · @nvidia · @composio · @tavilyai · @openclaw**</sub>
+
+---
+
+## How it works
+
+```
+listing photos + PDF facts
+        │
+        ▼
+  GPT-4o director  ──→  storyboard + which info beats to show
+        │                     │
+        │                     ├─ Tavily ─→ neighborhood research
+        │                     └─ OSM ────→ map / transit / nearby cards
+        ▼
+  NVIDIA Cosmos 3 Nano  ──→  one photorealistic clip per beat
+   (self-hosted on Nebius H200)
+        │
+        ▼
+  decorate + assembly  ──→  grade · captions · voiceover · music · stitch
+        │
+        ▼
+   30s landscape trailer.mp4
+```
+
+| File | Role |
+|------|------|
+| `app/main.py` | FastAPI server + Studio UI + generation API |
+| `app/trailer.py` | GPT-4o "director" — storyboard + info-beat planning |
+| `app/infocards.py` | Map / price / neighborhood cards (OpenStreetMap) |
+| `app/generation/cosmos.py` | NVIDIA Cosmos 3 image→video adapter |
+| `app/generation/stub.py` | Free local FFmpeg fallback generator |
+| `app/decorate.py` | Shared finish: grade, captions, fades, normalize |
+| `app/audio.py` | TTS voiceover + music bed + mux |
+| `app/assembly.py` | Info beats + clip concatenation |
+| `app/pipeline.py` | Orchestrates the whole run |
 
 ---
 
@@ -32,109 +94,61 @@ Requires Python 3.9+ and FFmpeg.
 ```bash
 cd LiveHere
 
-# 1. FFmpeg (one time)
-brew install ffmpeg
+brew install ffmpeg                 # one time
 
-# 2. Python environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Run
-python -m app
-#   or: uvicorn app.main:app --reload
+cp .env.example .env                # add your keys (OpenAI, Tavily, Cosmos)
+
+python -m app                       # → http://127.0.0.1:8000
 ```
 
-Open <http://127.0.0.1:8000>, add a few photos, describe the vibe, and click
-**Generate**.
+Open <http://127.0.0.1:8000>, pick a listing, tweak the auto-filled details, and
+hit **Generate**. With no GPU configured it runs on the free local FFmpeg stub;
+point it at Cosmos for the real thing (below).
 
 ---
 
-## How it works
+## Running the real Cosmos 3 backend
 
-```
-photos/video + instructions
-        │
-        ▼
-  storyboard.py   → timed scenes (morning → day → evening)
-        │
-        ▼
-  generation/     → one clip per scene  (adapter: stub | nebius)
-        │
-        ▼
-  assembly.py     → end card + concat → day_in_the_life.mp4
-```
-
-| File | Role |
-|------|------|
-| `app/main.py` | FastAPI server + UI + `/api/generate` |
-| `app/storyboard.py` | Builds the timed scene plan |
-| `app/generation/base.py` | `ClipGenerator` adapter interface |
-| `app/generation/stub.py` | Local FFmpeg generator (default, free) |
-| `app/generation/cosmos.py` | NVIDIA Cosmos 3 generator (hosted or self-hosted) |
-| `app/decorate.py` | Shared finish: grade, captions, fades, normalize |
-| `app/assembly.py` | End card + clip concatenation |
-| `app/pipeline.py` | Orchestrates the whole run |
-
----
-
-## Switching to real Cosmos 3 generation
-
-The backend is selected via env vars — **no code change** to the UI/pipeline.
-Copy `.env.example` to `.env` and fill it in:
+The generation backend is swapped purely via env vars — **no code change** to the
+UI or pipeline.
 
 ```bash
-cp .env.example .env
-# edit .env:
+# .env
 LIVEHERE_BACKEND=cosmos
-COSMOS_BASE_URL=https://integrate.api.nvidia.com/v1   # from the model page snippet
-COSMOS_API_KEY=nvapi-...                              # your key (keep secret)
+COSMOS_API_STYLE=vllm_omni
+COSMOS_BASE_URL=http://<your-gpu-host>:8000/v1
+COSMOS_API_KEY=...
 ```
 
-The same adapter (`app/generation/cosmos.py`) works against either:
-
-- **NVIDIA-hosted free endpoint** — on `build.nvidia.com`, open the `cosmos3-nano`
-  model, click **Get API Key** (`nvapi-...`), and copy the base URL from the code
-  snippet. Free credits, no GPU to manage. Cheapest path.
-- **Self-hosted vLLM-Omni** — on any NVIDIA GPU (RunPod/Modal/Nebius/local):
+We self-hosted it on a **Nebius H200 NVLink** instance with vLLM-Omni:
 
 ```bash
 vllm serve nvidia/Cosmos3-Nano --omni --host 0.0.0.0 --port 8000 --no-guardrails
-# then COSMOS_BASE_URL=http://<host>:8000/v1
 ```
 
-Cosmos can't run on Apple Silicon. Cost varies by host (free on NVIDIA's hosted
-endpoint within credits; ~$0.3–4/hr on rented GPUs — shut it down when idle).
-
-**Is the hosted endpoint live yet?** As of last test, NVIDIA's hosted
-`cosmos3-nano` generation route (`https://ai.api.nvidia.com/v1/infer`) still
-returns 404 (mid-rollout). Check anytime with:
-
-```bash
-.venv/bin/python -m app.probe
-```
-
-When it prints `LIVE!`, set `LIVEHERE_BACKEND=cosmos` in `.env` and restart.
-
-**Don't want to wait?** Self-host Cosmos3-Nano and point LiveHere at it.
-Cheapest path is **free**: deploy `deploy/modal_app.py` on Modal's $30/mo free
-tier (no credit card). Full walkthrough — Modal (free), Vast.ai, RunPod — in
-[`deploy/DEPLOY.md`](deploy/DEPLOY.md).
-
-### Architecture note
-
-Every backend returns a *raw* clip; `app/decorate.py` then finishes all clips
-identically (time-of-day grade, caption chips, fades, normalize) so stub and
-Cosmos output look consistent and concatenate cleanly.
+Full deploy walkthrough (Nebius / Modal / RunPod) is in
+[`deploy/DEPLOY.md`](deploy/DEPLOY.md). Cosmos can't run on Apple Silicon — keep
+the GPU instance up only while generating, and tear it down when idle.
 
 ---
 
-## Status / roadmap
+## Roadmap
 
-- [x] Local web UI (upload + instructions + playback/download)
-- [x] FFmpeg stub generator (motion, grade, captions, end card)
-- [x] Backend adapter seam for Cosmos
-- [x] Cosmos 3 image→video call (`/v1/videos/sync`, hosted or self-hosted)
-- [ ] Verify against the live NVIDIA free endpoint (needs API key)
-- [ ] Tavily neighborhood enrichment → caption facts
-- [ ] Geocoding + season inference from lease dates
+- [x] Photo → cinematic 30s landscape trailer
+- [x] GPT-4o director: storyboard + interleaved info beats
+- [x] Self-hosted NVIDIA Cosmos 3 Nano on Nebius H200
+- [x] OpenStreetMap map / transit / nearby cards
+- [x] OpenAI TTS voiceover + music bed
+- [ ] Deeper Tavily enrichment (reviews, schools, walkability → captioned facts)
+- [ ] One-click publish to listing platforms
+- [ ] Real-time generation preview
+
+---
+
+<div align="center">
+<sub>Made with ☕ for the Yacht Hackathon · Composio × Nebius × Tavily</sub>
+</div>
