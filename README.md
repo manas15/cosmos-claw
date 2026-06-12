@@ -6,7 +6,7 @@
 
 **Turn raw listing photos into a 30-second cinematic trailer that makes the deal.**
 
-*Built for the **Yacht Hackathon** — by [@ComposioHQ](https://github.com/ComposioHQ), [@nebius](https://github.com/nebius) & [@tavily-ai](https://github.com/tavily-ai).*
+*Built for the **Yacht Hackathon** — by [@ComposioHQ](https://github.com/ComposioHQ), [@nebius](https://github.com/nebius), [@tavily-ai](https://github.com/tavily-ai) & [@openclaw](https://github.com/openclaw).*
 
 [![Watch the demo](assets/demo-poster.jpg)](https://x.com/i/status/2065370878519468221)
 
