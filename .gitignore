@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# App data (user uploads + generated videos)
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Secrets / local config
+.env
+*.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

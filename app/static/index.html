@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveHere — AI Listing Trailers</title>
+    <link rel="stylesheet" href="/static/style.css?v=7" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo">◍</span>
+          <h1>LiveHere</h1>
+        </div>
+        <p class="tagline">Turn listing photos into cinematic trailers.</p>
+      </aside>
+
+      <main class="main">
+        <!-- ============ LISTINGS GRID (home) ============ -->
+        <section id="tab-listings" class="tab-panel">
+          <p id="listingsDir" class="muted small dir-hint"></p>
+          <div id="listingsGrid" class="listings-grid"></div>
+          <p id="listingsEmpty" class="muted empty-note" hidden>
+            No listings found. Drop a folder of photos + the listing PDF into the
+            listings directory above, then refresh.
+          </p>
+        </section>
+
+        <!-- ============ LISTING STUDIO (per-listing) ============ -->
+        <section id="listingDetail" class="tab-panel detail" hidden></section>
+      </main>
+    </div>
+
+    <script src="/static/app.js?v=7"></script>
+  </body>
+</html>
