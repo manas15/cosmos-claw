@@ -136,19 +136,6 @@ the GPU instance up only while generating, and tear it down when idle.
 
 ---
 
-## Roadmap
-
-- [x] Photo → cinematic 30s landscape trailer
-- [x] GPT-4o director: storyboard + interleaved info beats
-- [x] Self-hosted NVIDIA Cosmos 3 Nano on Nebius H200
-- [x] OpenStreetMap map / transit / nearby cards
-- [x] OpenAI TTS voiceover + music bed
-- [ ] Deeper Tavily enrichment (reviews, schools, walkability → captioned facts)
-- [ ] One-click publish to listing platforms
-- [ ] Real-time generation preview
-
----
-
 <div align="center">
 <sub>Made with ☕ for the Yacht Hackathon · Composio × Nebius × Tavily</sub>
 </div>
