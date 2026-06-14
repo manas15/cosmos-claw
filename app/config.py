@@ -1,4 +1,4 @@
-"""Central configuration for LiveHere.
+"""Central configuration for Cosmos Claw.
 
 All tunables live here so switching the generation backend (stub <-> Nebius
 Cosmos) is a single change driven by environment variables.
@@ -66,7 +66,7 @@ MAP_TILE_URL = os.environ.get(
     "MAP_TILE_URL", "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
 )
 # Nominatim (OSM geocoder) needs a descriptive User-Agent per its usage policy.
-GEOCODER_USER_AGENT = os.environ.get("GEOCODER_USER_AGENT", "LiveHere-hackathon/0.1")
+GEOCODER_USER_AGENT = os.environ.get("GEOCODER_USER_AGENT", "CosmosClaw-hackathon/0.2")
 # Optional custom music bed (mp3/wav); if unset we synthesize a soft pad.
 MUSIC_PATH = os.environ.get("MUSIC_PATH", "")
 MUSIC_VOLUME = float(os.environ.get("MUSIC_VOLUME", "0.16"))

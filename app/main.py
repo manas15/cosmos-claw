@@ -1,4 +1,4 @@
-"""LiveHere web app: upload photos/video + instructions -> day-in-the-life MP4.
+"""Cosmos Claw web app: upload venue photos + instructions -> social videos.
 
 Run locally:  uvicorn app.main:app --reload  (or `python -m app` )
 Then open:    http://127.0.0.1:8000
@@ -21,7 +21,7 @@ from .ffmpeg_utils import convert_image, extract_poster, ffmpeg_available, probe
 from .generation.factory import get_generator
 from .pipeline import generate_video
 
-app = FastAPI(title="LiveHere", version="0.1.0")
+app = FastAPI(title="Cosmos Claw", version="0.2.0")
 
 STATIC_DIR = Path(__file__).parent / "static"
 config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 # Self-hosting Cosmos3-Nano cheaply (real generation)
 
-LiveHere already speaks the right API (`/v1/videos/sync`, `vllm_omni` style).
+Cosmos Claw already speaks the right API (`/v1/videos/sync`, `vllm_omni` style).
 You just need a GPU box serving the model, then paste its URL into `.env`.
 
 ## Reality check (cost)
@@ -80,7 +80,7 @@ In the instance logs, wait for `Application startup complete` /
 `Uvicorn running on http://0.0.0.0:8000`. The **first boot downloads ~32 GB** of
 weights — give it several minutes; the first generation also warms up slowly.
 
-## Point LiveHere at it
+## Point Cosmos Claw at it
 Edit `LiveHere/.env`:
 ```
 LIVEHERE_BACKEND=cosmos

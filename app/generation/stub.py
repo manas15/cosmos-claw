@@ -6,7 +6,7 @@ slow Ken Burns move. Captions, grading, and fades are added afterwards by the
 shared ``decorate`` step, so the stub and the real Cosmos backend produce
 identically-finished clips.
 
-The result is a real, shareable MP4 that exercises the entire LiveHere pipeline
+The result is a real, shareable MP4 that exercises the entire Cosmos Claw pipeline
 end-to-end with zero GPU and zero cloud cost.
 """
 

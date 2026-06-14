@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🏠 LiveHere
+# 🪐 Cosmos Claw
 
-### See the lease, not just the layout.
+### Your venue, in scroll-stopping motion.
 
-**Turn raw listing photos into a 30-second cinematic trailer that makes the deal.**
+**Turn a venue's photos into cinematic social videos — sized for every feed.**
 
 *Built for the **Yacht Hackathon** — by [@ComposioHQ](https://github.com/ComposioHQ), [@nebius](https://github.com/nebius), [@tavily-ai](https://github.com/tavily-ai) & [@openclaw](https://github.com/openclaw).*
 
@@ -12,7 +12,7 @@
 
 ▶️ **[Watch the 60s demo on X](https://x.com/i/status/2065370878519468221)** &nbsp;·&nbsp; or play it inline below 👇
 
-<video src="https://github.com/manas15/livehere/raw/main/assets/demo.mp4" controls muted loop playsinline width="80%"></video>
+<video src="https://github.com/manas15/cosmos-claw/raw/main/assets/demo.mp4" controls muted loop playsinline width="80%"></video>
 
 </div>
 
@@ -20,12 +20,13 @@
 
 ## The pitch
 
-**30 seconds.** That's all a renter gives a listing before they swipe away.
+**A few seconds.** That's all anyone gives a post before they swipe away.
 
-LiveHere turns raw listing photos into a cinematic trailer that makes the deal in
-those 30 seconds — **location, neighborhood, vibe, and price**, all in one
-scroll-stopping cut. Drop in the photos, and out comes a property trailer a
-renter actually wants to watch.
+Cosmos Claw turns a venue's photos — a short-let, a restaurant or cafe, a bar or
+club — into a cinematic, scroll-stopping social video, with the location, vibe,
+and selling points woven in. Drop in the photos, and out comes a clip sized for
+every feed (Reels/TikTok 9:16, IG 1:1 & 4:5, YouTube 16:9) — your whole social
+calendar from one shoot.
 
 > Looking forward to expanding this on the Yacht — SF is *soooo* amazing 🌉⛵️
 
@@ -41,12 +42,12 @@ renter actually wants to watch.
 | 🎬 **Director** | **GPT-4o (vision)** — reads the photos and writes the storyboard |
 | 🗺️ **Maps & info cards** | **OpenStreetMap** — location, transit & nearby spots |
 | 🔊 **Audio** | **OpenAI TTS** voiceover + a soft synthesized music bed |
-| 🧩 **App** | **FastAPI** + a per-listing Studio UI, FFmpeg for finishing/stitching |
+| 🧩 **App** | **FastAPI** + a per-venue Studio UI, FFmpeg for finishing/stitching |
 
 We didn't just call a hosted API — we **stood up Cosmos 3 Nano ourselves** on
 Nebius H200 NVLink GPUs (vLLM-Omni, OpenAI-compatible) and drove it end-to-end.
-Tavily researches the surrounding neighborhood so every second of the trailer
-carries the context a renter needs to say *yes*.
+Tavily researches the surrounding neighborhood so every second of the video
+carries the context a viewer needs to say *yes*.
 
 <sub>Shout-out to the partners: **@ship_builders · @nebiusai · @nvidia · @composio · @tavilyai · @openclaw**</sub>
 
@@ -137,5 +138,5 @@ the GPU instance up only while generating, and tear it down when idle.
 ---
 
 <div align="center">
-<sub>Made with ☕ for the Yacht Hackathon · Composio × Nebius × Tavily</sub>
+<sub>Cosmos Claw · made with ☕ for the Yacht Hackathon · Composio × Nebius × Tavily</sub>
 </div>

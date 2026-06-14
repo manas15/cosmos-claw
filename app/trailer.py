@@ -36,7 +36,7 @@ _ALLOWED_SHOTS = {
 }
 
 _SYSTEM_PROMPT = """\
-You are the director and copywriter for "LiveHere", which turns a property \
+You are the director and copywriter for "Cosmos Claw", which turns a property \
 host's photos + listing facts into a polished ~30 second VERTICAL (9:16) listing \
 trailer that makes viewers want to book.
 

@@ -41,7 +41,7 @@ _TIME_OF_DAY_ALIASES = {
 }
 
 _SYSTEM_PROMPT = """\
-You are the director for "LiveHere", which turns a few photos of a home into a \
+You are the director for "Cosmos Claw", which turns a few photos of a home into a \
 cinematic, first-person POV "day in the life" video that helps a prospective \
 renter feel what living there is like.
 

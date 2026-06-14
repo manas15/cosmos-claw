@@ -1,7 +1,7 @@
 """Serve NVIDIA Cosmos3-Nano on Modal's free $30/month tier.
 
 This runs the official `vllm/vllm-omni:cosmos3` image as a Modal web server,
-exposing the same OpenAI-compatible /v1/videos/sync endpoint LiveHere already
+exposing the same OpenAI-compatible /v1/videos/sync endpoint Cosmos Claw already
 talks to. No credit card required for the Starter plan's $30/mo credits.
 
 Setup (one time):

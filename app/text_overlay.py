@@ -126,7 +126,7 @@ def render_trailer_end_card(
     location: str = "",
     highlight: str = "",
     cta: str = "",
-    disclosure: str = "AI-generated listing preview · LiveHere",
+    disclosure: str = "AI-generated preview · Cosmos Claw",
 ) -> str:
     """A full-frame VERTICAL closing card for the listing trailer."""
     w, h = config.TRAILER_WIDTH, config.TRAILER_HEIGHT
