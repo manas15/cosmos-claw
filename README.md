@@ -57,6 +57,29 @@ H200s. It pauses when the network blips and resumes on its own. Truly always-on.
 
 ---
 
+## See it in action
+
+**1 — Raw photos in.** Drop a venue's existing images into the project. That's the
+only input. *(Here: the Alamo Square Hacker House — bedrooms, gym, coworking.)*
+
+![Raw images tab](assets/screens/raw-images.jpg)
+
+**2 — The marketing manager's memory.** An OpenClaw-style GPT-4o manager researches
+the venue, locks in a consistent brand (positioning, audience, tone, pitch), writes
+the voiceover, and picks the assets & order — the durable memory every video is
+grounded on.
+
+![Memory tab — brand dossier](assets/screens/memory.jpg)
+
+**3 — Ready-to-post cuts out.** The Agent Loop streams everything the videographer
+does in real time, and each published cut is a ready-to-post package: video +
+caption + recommended audio (music & voice) + handle, ready to download or push to
+the channel.
+
+![Agent Loop — published cut](assets/screens/agent-loop.jpg)
+
+---
+
 ## The stack
 
 | Layer | What we used |
