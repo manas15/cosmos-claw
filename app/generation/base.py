@@ -31,6 +31,16 @@ class Scene:
     # pipeline then seeds it with the previous clip's last frame for continuous
     # motion. False (default) starts fresh from this beat's room photo.
     continues_prev: bool = False
+    # --- cinematic motion (v2) ---
+    # Camera move label chosen by the director (e.g. "dolly-in with parallax").
+    # Drives both the generation prompt and the stub's Ken Burns fallback.
+    shot: str = ""
+    # How bold the camera move is, 0..1 (0.35 calm, 0.85 dramatic). Scales the
+    # generator's flow_shift and the stub's pan/zoom amplitude.
+    motion_strength: float = 0.5
+    # Subtle in-scene motion to bring the frame alive without changing the room
+    # (e.g. "sheer curtains sway", "steam rising from the cup", "water shimmers").
+    ambient: str = ""
 
 
 class ClipGenerator(ABC):
@@ -39,8 +49,12 @@ class ClipGenerator(ABC):
     name: str = "base"
 
     @abstractmethod
-    def generate_clip(self, scene: Scene, out_path: str) -> str:
-        """Render ``scene`` to ``out_path`` (an .mp4) and return the path."""
+    def generate_clip(self, scene: Scene, out_path: str, variant: int = 0) -> str:
+        """Render ``scene`` to ``out_path`` (an .mp4) and return the path.
+
+        ``variant`` selects a distinct take (different seed / motion treatment)
+        for best-of-N generation; variant 0 is the canonical take.
+        """
         raise NotImplementedError
 
     def available(self) -> tuple[bool, str]:

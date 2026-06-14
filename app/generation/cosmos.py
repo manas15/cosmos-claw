@@ -43,7 +43,7 @@ class CosmosClipGenerator(ClipGenerator):
             return False, "COSMOS_API_KEY not set"
         return True, f"configured ({self.style} @ {config.COSMOS_BASE_URL})"
 
-    def generate_clip(self, scene: Scene, out_path: str) -> str:
+    def generate_clip(self, scene: Scene, out_path: str, variant: int = 0) -> str:
         if not scene.source_path:
             raise ValueError("CosmosClipGenerator requires a source image/video for the scene")
 
@@ -53,16 +53,33 @@ class CosmosClipGenerator(ClipGenerator):
             src = extract_frame(src, str(work / f"frame_{scene.index}.png"), at_seconds=1.0)
 
         if self.style == "nvidia_infer":
-            return self._generate_nvidia_infer(scene, src, out_path)
-        return self._generate_vllm_omni(scene, src, out_path)
+            return self._generate_nvidia_infer(scene, src, out_path, variant)
+        return self._generate_vllm_omni(scene, src, out_path, variant)
 
     @staticmethod
     def _fidelity_prompt(scene: Scene) -> str:
         """Anchor the prompt to the real photo so Cosmos doesn't hallucinate."""
         return scene.prompt.rstrip() + config.COSMOS_FIDELITY_SUFFIX
 
+    @staticmethod
+    def _seed(scene: Scene, variant: int) -> int:
+        """Distinct, reproducible seed per beat + take."""
+        return 1000 + scene.index * 100 + variant * 17
+
+    @staticmethod
+    def _flow_shift(scene: Scene, variant: int) -> float:
+        """Map the beat's motion_strength to flow_shift (bolder move -> more motion).
+
+        A small per-variant jitter spreads best-of-N takes across the motion range.
+        """
+        s = min(1.0, max(0.0, float(scene.motion_strength or 0.5)))
+        base = config.COSMOS_FLOW_SHIFT * (1.0 + config.COSMOS_MOTION_FLOW_GAIN * (s - 0.5))
+        jitter = (0.0, 0.12, -0.12, 0.24)[variant % 4] * config.COSMOS_FLOW_SHIFT
+        val = base + jitter
+        return round(max(config.COSMOS_FLOW_SHIFT_MIN, min(config.COSMOS_FLOW_SHIFT_MAX, val)), 3)
+
     # --- NVIDIA-hosted build.nvidia.com "infer" JSON API -------------------
-    def _generate_nvidia_infer(self, scene: Scene, src: str, out_path: str) -> str:
+    def _generate_nvidia_infer(self, scene: Scene, src: str, out_path: str, variant: int = 0) -> str:
         mime = mimetypes.guess_type(src)[0] or "image/png"
         b64 = base64.b64encode(Path(src).read_bytes()).decode("ascii")
         body = {
@@ -73,7 +90,7 @@ class CosmosClipGenerator(ClipGenerator):
             "num_output_frames": config.COSMOS_NUM_FRAMES,
             "steps": config.COSMOS_STEPS,
             "guidance_scale": config.COSMOS_GUIDANCE,
-            "seed": 1000 + scene.index,
+            "seed": self._seed(scene, variant),
         }
         headers = {
             "Authorization": f"Bearer {config.COSMOS_API_KEY}",
@@ -107,7 +124,7 @@ class CosmosClipGenerator(ClipGenerator):
         return out_path
 
     # --- self-hosted vLLM-Omni multipart /videos/sync API ------------------
-    def _generate_vllm_omni(self, scene: Scene, src: str, out_path: str) -> str:
+    def _generate_vllm_omni(self, scene: Scene, src: str, out_path: str, variant: int = 0) -> str:
         mime = mimetypes.guess_type(src)[0] or "image/png"
         data = {
             "model": config.COSMOS_MODEL,
@@ -119,12 +136,12 @@ class CosmosClipGenerator(ClipGenerator):
             "num_inference_steps": str(config.COSMOS_STEPS),
             "guidance_scale": str(config.COSMOS_GUIDANCE),
             "max_sequence_length": "4096",
-            "flow_shift": str(config.COSMOS_FLOW_SHIFT),
+            "flow_shift": str(self._flow_shift(scene, variant)),
             "extra_params": (
                 '{"use_resolution_template":false,'
                 '"use_duration_template":false,"guardrails":true}'
             ),
-            "seed": str(1000 + scene.index),
+            "seed": str(self._seed(scene, variant)),
         }
         headers = {
             "Authorization": f"Bearer {config.COSMOS_API_KEY}",

@@ -52,6 +52,20 @@ NORMALIZE_IMAGE_EXTS = {".avif", ".heic", ".heif"}
 DEFAULT_MODE = os.environ.get("LIVEHERE_MODE", "trailer").lower()
 TRAILER_WIDTH = int(os.environ.get("TRAILER_WIDTH", "1920"))
 TRAILER_HEIGHT = int(os.environ.get("TRAILER_HEIGHT", "1080"))
+
+# Social delivery formats the agent can render to. Each maps to an output
+# canvas; the pipeline blur-pads/centers shots to fit any of these.
+FORMAT_PRESETS: dict[str, dict] = {
+    "reel": {"label": "Instagram Reel", "w": 1080, "h": 1920, "ratio": "9:16"},
+    "tiktok": {"label": "TikTok", "w": 1080, "h": 1920, "ratio": "9:16"},
+    "shorts": {"label": "YouTube Shorts", "w": 1080, "h": 1920, "ratio": "9:16"},
+    "story": {"label": "Instagram Story", "w": 1080, "h": 1920, "ratio": "9:16"},
+    "snap": {"label": "Snapchat Story", "w": 1080, "h": 1920, "ratio": "9:16"},
+    "youtube": {"label": "YouTube", "w": 1920, "h": 1080, "ratio": "16:9"},
+    "square": {"label": "Instagram Feed", "w": 1080, "h": 1080, "ratio": "1:1"},
+    "portrait": {"label": "Instagram Portrait", "w": 1080, "h": 1350, "ratio": "4:5"},
+}
+DEFAULT_FORMAT = os.environ.get("DEFAULT_FORMAT", "reel").lower()
 TRAILER_TARGET_BEATS = int(os.environ.get("TRAILER_TARGET_BEATS", "6"))
 TRAILER_END_CARD_DURATION = float(os.environ.get("TRAILER_END_CARD_DURATION", "4.5"))
 # OpenAI TTS voiceover.
@@ -109,6 +123,15 @@ COSMOS_FPS = int(os.environ.get("COSMOS_FPS", "24"))
 COSMOS_STEPS = int(os.environ.get("COSMOS_STEPS", "50"))
 COSMOS_GUIDANCE = float(os.environ.get("COSMOS_GUIDANCE", "4.0"))
 COSMOS_FLOW_SHIFT = float(os.environ.get("COSMOS_FLOW_SHIFT", "7.0"))
+# Cinematic motion (v2): a beat's motion_strength (0..1) scales flow_shift around
+# the base above so bold moves get more motion. effective = base * (1 + gain*(s-0.5)).
+# Tune the base via the Phase F sweep; this just spreads it per beat.
+COSMOS_MOTION_FLOW_GAIN = float(os.environ.get("COSMOS_MOTION_FLOW_GAIN", "0.6"))
+COSMOS_FLOW_SHIFT_MIN = float(os.environ.get("COSMOS_FLOW_SHIFT_MIN", "5.0"))
+COSMOS_FLOW_SHIFT_MAX = float(os.environ.get("COSMOS_FLOW_SHIFT_MAX", "15.0"))
+# Best-of-N: render this many takes per beat (varied seed/flow), auto-rank, keep
+# all of them for the Studio take picker. 1 = single take (default / cheapest).
+COSMOS_BEST_OF_N = int(os.environ.get("COSMOS_BEST_OF_N", "1"))
 COSMOS_RESOLUTION = os.environ.get("COSMOS_RESOLUTION", "720_16_9")  # nvidia_infer
 COSMOS_SIZE = os.environ.get("COSMOS_SIZE", "1280x720")  # vllm_omni
 COSMOS_TIMEOUT = int(os.environ.get("COSMOS_TIMEOUT", "900"))  # seconds
@@ -116,17 +139,23 @@ COSMOS_TIMEOUT = int(os.environ.get("COSMOS_TIMEOUT", "900"))  # seconds
 COSMOS_MAX_RETRIES = int(os.environ.get("COSMOS_MAX_RETRIES", "3"))
 
 # Appended to every generation prompt to anchor output to the real photo.
+# v2: softened to ALLOW deliberate, cinematic camera movement and natural ambient
+# motion (curtains, water, steam, foliage) while keeping the architecture and
+# contents identical and photoreal. The old wording ("only the camera moves very
+# slowly, small motion") is what made v1 clips feel static.
 COSMOS_FIDELITY_SUFFIX = os.environ.get(
     "COSMOS_FIDELITY_SUFFIX",
-    " Real footage shot on a professional camera — live-action photography, NOT a "
-    "video game, NOT CGI, NOT a 3D render, NOT animation. The scene stays "
-    "photorealistic and identical to the reference photo: the same room, "
-    "furniture, objects, colors, materials, and lighting. Nothing is added, "
-    "removed, moved, or transformed. Only the camera moves — very slowly, "
-    "smoothly, and steadily, with a small motion. Real estate b-roll, true to life.",
+    " Real footage shot on a professional cinema camera — live-action photography, "
+    "NOT a video game, NOT CGI, NOT a 3D render, NOT animation. The space stays "
+    "photorealistic and identical to the reference photo: the same room, furniture, "
+    "objects, colors, materials, and lighting — nothing is added, removed, or "
+    "transformed. The camera move is smooth, deliberate, and cinematic, with real "
+    "parallax and depth; any in-scene motion is natural and subtle. Architecture and "
+    "layout stay perfectly stable. Premium real-estate b-roll, true to life.",
 )
-# Strong negative prompt to suppress the usual i2v failure modes AND the
-# synthetic "video game / rendered" look the user explicitly wants to avoid.
+# Negative prompt to suppress i2v failure modes AND the synthetic "video game /
+# rendered" look. v2: dropped "fast motion"/"zoom blur" (they fought the cinematic
+# motion goal); kept the anti-CGI and anti-warp/deform terms that protect realism.
 COSMOS_NEGATIVE_PROMPT = os.environ.get(
     "COSMOS_NEGATIVE_PROMPT",
     "video game, video game screenshot, game engine, unreal engine, unity, "
@@ -136,8 +165,7 @@ COSMOS_NEGATIVE_PROMPT = os.environ.get(
     "people, person, human, hands, blurry, distorted, low quality, text, "
     "watermark, morphing, warping, melting, bending walls, deforming, flickering, "
     "shifting layout, extra objects, new furniture, duplicated objects, "
-    "hallucination, surreal, oversaturated, fisheye, wobbling, shaking, "
-    "fast motion, zoom blur",
+    "hallucination, surreal, oversaturated, fisheye, wobbling, shaking",
 )
 
 # --- GPT-4o "director": turns raw uploads into a first-person POV storyboard ---
