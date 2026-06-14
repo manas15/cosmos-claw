@@ -379,6 +379,8 @@ def main() -> None:
     ap.add_argument("--sleep", type=float, default=0.0, help="pause between campaigns (s)")
     ap.add_argument("--no-vision", action="store_true", help="skip GPT vision asset labels")
     ap.add_argument("--reindex", action="store_true", help="rebuild the asset index")
+    ap.add_argument("--tag", default="",
+                    help="namespace the scratch dir so parallel workers don't clobber clips")
     args = ap.parse_args()
 
     project_ids = [p.strip() for p in args.projects.split(",") if p.strip()]
@@ -398,7 +400,7 @@ def main() -> None:
     if not ok and not _ensure_ready(gen):
         raise SystemExit("generation backend not ready (Cosmos tunnel up? .env=cosmos?)")
 
-    work = config.UPLOAD_DIR / "_mkt"
+    work = config.UPLOAD_DIR / (f"_mkt_{args.tag}" if args.tag else "_mkt")
     work.mkdir(parents=True, exist_ok=True)
 
     # STUDY every project once.
