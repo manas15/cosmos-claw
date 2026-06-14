@@ -82,3 +82,14 @@ motion; ffmpeg stitches with fast transitions, music, and voiceover.
   (`la-house-1 → "House Rental"`) and removed the placeholder. Now exactly two real
   projects: Hacker house + House Rental (la-house-1). Did NOT rename the la-house-1
   folder — its generated versions in outputs/ are keyed to that id.
+
+### 2026-06-14 (montages land in the Agent Loop + duration target)
+- cosmos_montage.py now (a) auto-sizes frames/clip from --target-seconds (default 26,
+  clamped to the 20-30s sweet spot) and (b) --install-listing registers the finished
+  cut as a proper listing version (copy to outputs/, poster, brand caption/handle/
+  hashtags, meta, activity log) so it shows up in the Agent Loop feed as a ready-to-
+  post card. Defaults install to --listing when given.
+- Installed the good la-house montage (14 clips, 24s) as a House Rental version.
+- Tunnel went zombie mid-run (forwarding dead while the ssh proc stayed alive) which
+  truncated the first hacker-house montage to 5 clips/8.8s. Restarted the tunnel with
+  tighter keepalives (ServerAliveInterval=15, CountMax=3) and re-ran hacker-house.
