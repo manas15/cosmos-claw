@@ -36,6 +36,7 @@ import re
 import shutil
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -95,7 +96,7 @@ def _campaign_idea(dossier: dict, asset_index: list[dict], past_themes: list[str
         "allowed_music_moods": list(_MOODS),
         "allowed_voices": list(_VOICES),
         "target_seconds": target_seconds,
-        "want_photos": "pick 5 to 8 indices, ordered to tell a story",
+        "want_photos": "pick 9 to 12 indices, ordered to tell a story (short clips, snappy cuts)",
     }
     import json as _json
     data = marketing_agent._gpt_json(_IDEA_SYSTEM, _json.dumps(user), max_tokens=900, temperature=0.85)
@@ -119,10 +120,10 @@ def _sanitize_idea(data: dict, asset_index: list[dict], dossier: dict) -> dict:
             continue
         if iv in valid and iv not in idx:
             idx.append(iv)
-    if len(idx) < 4:  # fall back to an even spread across the library
-        step = max(1, n // 6)
-        idx = list(range(0, n, step))[:6] or list(range(min(n, 6)))
-    idx = idx[:8]
+    if len(idx) < 6:  # fall back to an even spread across the library
+        step = max(1, n // 10)
+        idx = list(range(0, n, step))[:10] or list(range(min(n, 10)))
+    idx = idx[:12]  # more, shorter beats → small reliable clips, still ~20-30s
 
     fmt = str(data.get("format") or "").strip().lower()
     if fmt not in config.FORMAT_PRESETS:
@@ -190,19 +191,25 @@ def _asset_index(lst: listings.Listing, dossier: dict, work: Path, *,
     return index
 
 
-def _auto_frames(n_clips: int, target_seconds: float, xdur: float) -> int:
-    """Frames/clip so the stitched cut lands near target_seconds (20-30s)."""
+def _auto_frames(n_clips: int, target_seconds: float, xdur: float, max_frames: int = 49) -> int:
+    """Frames/clip so the stitched cut lands near target_seconds.
+
+    ``max_frames`` caps the per-clip length: shorter clips = smaller (~5MB) MP4
+    responses that transfer reliably over a jittery tunnel (Starlink), where big
+    73-frame (~9MB) clips were breaking mid-download. More, shorter beats keep
+    the montage in the 20-30s range without huge payloads.
+    """
     fps = float(config.COSMOS_FPS)
     target = min(30.0, max(18.0, target_seconds))
     per_clip = (target + (n_clips - 1) * xdur) / max(1, n_clips)
     per_clip = min(3.0, max(1.4, per_clip))
     frames = int(round((per_clip * fps - 1) / 4.0)) * 4 + 1  # snap to 4k+1 for Cosmos
-    return max(25, min(97, frames))
+    return max(25, min(int(max_frames), frames))
 
 
 def _run_campaign(lst: listings.Listing, dossier: dict, asset_index: list[dict],
                   idea: dict, gen, work: Path, *, target_seconds: float,
-                  xdur: float) -> bool:
+                  xdur: float, max_frames: int = 49) -> bool:
     """Film + cut + voice + publish one campaign. Returns True if published."""
     lid = lst.id
     preset = config.FORMAT_PRESETS[idea["format"]]
@@ -215,7 +222,7 @@ def _run_campaign(lst: listings.Listing, dossier: dict, asset_index: list[dict],
         print("  ! not enough photos for this idea; skipping")
         return False
 
-    frames = _auto_frames(len(chosen), target_seconds, xdur)
+    frames = _auto_frames(len(chosen), target_seconds, xdur, max_frames)
     config.COSMOS_NUM_FRAMES = frames
     clip_seconds = max(1.0, frames / float(config.COSMOS_FPS))
 
@@ -228,6 +235,11 @@ def _run_campaign(lst: listings.Listing, dossier: dict, asset_index: list[dict],
 
     clips: list[str] = []
     for slot, a in enumerate(chosen):
+        # Wait out any tunnel/wifi blip BEFORE filming so we never burn a beat
+        # against a dead endpoint. The keeper restores the tunnel underneath.
+        if not _ensure_ready(gen):
+            print("  ! endpoint stayed down too long; cutting this shoot short")
+            break
         scene = Scene(
             index=slot, source_path=a["path"], prompt=a["prompt"], caption="",
             time_label="", time_of_day="day", duration=clip_seconds,
@@ -328,14 +340,29 @@ def _publish(lst: listings.Listing, dossier: dict, idea: dict, out_path: str,
     print(f"  ✓ published {lid} v{vid} ({label} {ratio}) → Agent Loop")
 
 
-def _ensure_ready(gen, attempts: int = 6) -> bool:
-    """Wait for the backend (Cosmos tunnel) to be ready; the keeper self-heals."""
+def _endpoint_live(timeout: float = 8.0) -> bool:
+    """A real liveness probe (GET /v1/models) — catches a dropped SSH tunnel
+    that gen.available() (config-only) cannot see."""
+    url = config.COSMOS_BASE_URL.rstrip("/") + "/models"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=timeout) as r:
+            return 200 <= getattr(r, "status", r.getcode()) < 300
+    except Exception:
+        return False
+
+
+def _ensure_ready(gen, attempts: int = 60, wait: float = 20.0) -> bool:
+    """Block until the backend is genuinely reachable; the keeper self-heals the
+    tunnel underneath. For Cosmos we require a live probe so a wifi/tunnel blip
+    PAUSES the loop instead of burning a campaign (~60*20s = up to 20 min)."""
+    cosmos = "cosmos" in gen.name.lower()
     for i in range(attempts):
         ok, why = gen.available()
-        if ok:
+        if ok and (not cosmos or _endpoint_live()):
             return True
-        print(f"  … backend not ready ({why}); waiting for tunnel ({i + 1}/{attempts})")
-        time.sleep(20)
+        if i == 0 or (i + 1) % 3 == 0:
+            print(f"  … endpoint down — pausing for the tunnel to recover ({i + 1}/{attempts})")
+        time.sleep(wait)
     return False
 
 
@@ -346,6 +373,8 @@ def main() -> None:
     ap.add_argument("--max-videos", type=int, default=6, help="total cuts to publish")
     ap.add_argument("--backend", default="", help="cosmos | stub (default from .env)")
     ap.add_argument("--target-seconds", type=float, default=24.0)
+    ap.add_argument("--max-frames", type=int, default=49,
+                    help="cap frames/clip so MP4s stay small + transfer reliably (~49 ≈ 2s)")
     ap.add_argument("--xdur", type=float, default=0.35, help="transition seconds")
     ap.add_argument("--sleep", type=float, default=0.0, help="pause between campaigns (s)")
     ap.add_argument("--no-vision", action="store_true", help="skip GPT vision asset labels")
@@ -404,7 +433,8 @@ def main() -> None:
 
         try:
             if _run_campaign(lst, dossier, indexes[lid], idea, gen, work,
-                             target_seconds=args.target_seconds, xdur=args.xdur):
+                             target_seconds=args.target_seconds, xdur=args.xdur,
+                             max_frames=args.max_frames):
                 published += 1
         except Exception as exc:  # noqa: BLE001
             brand.log_activity(lid, "⚠️", f"Campaign “{idea.get('theme','?')}” hit an error", "generate")
