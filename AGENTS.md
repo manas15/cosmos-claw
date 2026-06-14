@@ -56,5 +56,18 @@ motion; ffmpeg stitches with fast transitions, music, and voiceover.
   `/v1/videos/sync`.
 - Opened the SSH tunnel and validated the full montage path on live Cosmos with a
   3-photo smoke run (GPT-4o vision labels + fast transitions + music → 5.5s).
-- Kicked off the full 14-photo `la-house-1` montage → `uploads/montage.mp4`.
+- Ran the full 14-photo `la-house-1` montage on live Cosmos → `uploads/montage.mp4`
+  (24.0s, 14 clips).
 - Started keeping this AGENTS.md worklog + committing to GitHub as we go.
+- New project **`hacker-house`** = Alamo Square House (Accelr8), SF co-living for
+  founders/builders. Source files in `../Airbnbs/Hacker house/` (photos split across
+  co-working/downstairs/gym/private rooms/Upper Floor; venue details in `website/`).
+  Mined the website HTML → `website/alamo-square-facts.md` (positioning, $2.5–3k/mo,
+  location, spaces, gym/coworking/makerspace, community/events, house values).
+  Curated 16 photos into a narrative order (top floor → downstairs/garden → private
+  rooms → gym → coworking) at the project root and kicked off a live-Cosmos montage
+  → `uploads/montage_hacker_house.mp4`.
+
+## Projects (source folders live in ../Airbnbs/, outside the repo)
+- `la-house-1` — "LA House 1" Airbnb listing (original demo).
+- `hacker-house` — Alamo Square House co-living (Accelr8).
