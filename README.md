@@ -2,9 +2,9 @@
 
 # 🪐 Cosmos Claw
 
-### Your venue, in scroll-stopping motion.
+### Your always-on, AI-native videographer.
 
-**Turn a venue's photos into cinematic social videos — sized for every feed.**
+**It shoots, directs, and edits social videos for your venue — on autopilot, in every format, without a film crew.**
 
 *Built for the **Yacht Hackathon** — by [@ComposioHQ](https://github.com/ComposioHQ), [@nebius](https://github.com/nebius), [@tavily-ai](https://github.com/tavily-ai) & [@openclaw](https://github.com/openclaw).*
 
@@ -20,13 +20,22 @@
 
 ## The pitch
 
-**A few seconds.** That's all anyone gives a post before they swipe away.
+Every venue needs a steady stream of video, but a videographer is expensive,
+slow, and one-shoot-at-a-time. **Cosmos Claw is the always-on, AI-native
+alternative** — a videographer that never sleeps.
 
-Cosmos Claw turns a venue's photos — a short-let, a restaurant or cafe, a bar or
-club — into a cinematic, scroll-stopping social video, with the location, vibe,
-and selling points woven in. Drop in the photos, and out comes a clip sized for
-every feed (Reels/TikTok 9:16, IG 1:1 & 4:5, YouTube 16:9) — your whole social
-calendar from one shoot.
+Point it at any venue — a short-let, a restaurant or cafe, a bar or club — and it
+does the whole job:
+
+- **Directs** the shoot — GPT-4o reads your photos and writes the storyboard.
+- **Films** real motion — NVIDIA Cosmos 3 *generates* video frame-by-frame (not a
+  slideshow), so the space actually moves.
+- **Edits** the cut — captions, neighborhood context, voiceover, and music.
+- **Delivers everywhere** — one source, every feed (Reels/TikTok 9:16, IG 1:1 &
+  4:5, YouTube 16:9).
+
+No crew, no call sheet, no edit bay. Just your existing photos in, a full social
+calendar out — on repeat.
 
 > Looking forward to expanding this on the Yacht — SF is *soooo* amazing 🌉⛵️
 
@@ -85,6 +94,50 @@ listing photos + PDF facts
 | `app/audio.py` | TTS voiceover + music bed + mux |
 | `app/assembly.py` | Info beats + clip concatenation |
 | `app/pipeline.py` | Orchestrates the whole run |
+| `app/brand.py` | Per-project brand dossier (memory + consistency) |
+| `app/marketing_agent.py` | GPT-4o marketing manager: research → brand → brief |
+| `app/agent.py` | Terminal CLI to drive the agent + fire renders |
+
+---
+
+## The marketing manager agent
+
+Cosmos Claw isn't a one-shot tool — it's an **always-on, AI-native videographer**
+with a marketing manager working alongside it. For every project there's a
+persistent **brand dossier** (`outputs/listing_{id}_brand.json`) that is the single
+source of truth across every video:
+
+- **Research** — Tavily web search (or GPT-4o fabrication when there's no key) for
+  neighborhood, transit and competitive context.
+- **Brand** — GPT-4o writes the positioning (one-liner, audience, tone, voice,
+  music) and **locks in any missing facts as durable assumptions** that are *never
+  overwritten*, so price/amenities/host story stay identical in every future cut.
+- **Brief** — GPT-4o (vision) picks the strongest uploaded photos, **orders them
+  like a tour**, and writes hooks, captions, a ~75-word voiceover, the music mood,
+  the TTS voice, and the target format. Generation honors this brief.
+
+```
+research ─→ build_brand (durable assumptions) ─→ build_brief (assets/order/VO/music)
+                                   │
+                                   ▼
+                    brand dossier  ──→  every generation grounds on it
+```
+
+Drive it from the **Agent Loop** tab in the UI (Run marketing manager → review the
+brief → pick a format → Generate), or entirely from the terminal:
+
+```bash
+python -m app.agent list                                  # projects + dossier status
+python -m app.agent run la-house-1 --format reel          # research → brand → brief
+python -m app.agent dossier show la-house-1               # inspect the dossier
+python -m app.agent assume la-house-1 price "$245/night"  # lock a consistent fact
+python -m app.agent brief auto la-house-1 --format story  # regenerate the brief (GPT)
+python -m app.agent generate la-house-1 --format youtube  # render via the live API
+```
+
+Formats: `reel`, `tiktok`, `shorts`, `story`, `snap` (9:16), `youtube` (16:9),
+`square` (1:1), `portrait` (4:5). The render canvas switches automatically and the
+map/price/neighborhood info cards re-flow to match.
 
 ---
 
