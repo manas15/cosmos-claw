@@ -71,3 +71,14 @@ motion; ffmpeg stitches with fast transitions, music, and voiceover.
 ## Projects (source folders live in ../Airbnbs/, outside the repo)
 - `la-house-1` — "LA House 1" Airbnb listing (original demo).
 - `hacker-house` — Alamo Square House co-living (Accelr8).
+
+### 2026-06-14 (project list cleanup)
+- Sidebar was showing 4 entries (House Rental, LA House 1, backyard, Cafe SOON). Root
+  causes: (1) `Airbnbs/backyard/` was a misplaced Hacker-house *area* (3 backyard
+  photos) sitting at the listings root → moved into `Airbnbs/Hacker house/backyard/`;
+  (2) leftover rebrand hacks in app.js — an `i===0 → "House Rental"` relabel (which
+  mislabeled Hacker house since it sorts first) and a hardcoded "Cafe (SOON)"
+  placeholder. Replaced the relabel with a stable `DISPLAY_NAMES` map
+  (`la-house-1 → "House Rental"`) and removed the placeholder. Now exactly two real
+  projects: Hacker house + House Rental (la-house-1). Did NOT rename the la-house-1
+  folder — its generated versions in outputs/ are keyed to that id.

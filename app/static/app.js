@@ -59,10 +59,14 @@ const listingsPanel = document.getElementById("tab-listings");
 const detailEl = document.getElementById("listingDetail");
 const projectNavEl = document.getElementById("projectNav");
 
+// Friendly display names for specific listing folders (keeps a stable label
+// without renaming the folder/id, which would orphan generated outputs).
+const DISPLAY_NAMES = {
+  "la-house-1": "House Rental",
+};
+
 // Placeholder projects we haven't wired to a real listing folder yet.
-const PLACEHOLDER_PROJECTS = [
-  { id: "__cafe__", label: "Cafe", icon: "☕", empty: true },
-];
+const PLACEHOLDER_PROJECTS = [];
 
 let projects = [];
 let activeProjectId = null;
@@ -75,10 +79,9 @@ async function loadProjects() {
   } catch {
     /* fall through to placeholders only */
   }
-  // The first real listing is our "House Rental" demo project.
-  const real = listings.map((l, i) => ({
+  const real = listings.map((l) => ({
     id: l.id,
-    label: i === 0 ? "House Rental" : l.name,
+    label: DISPLAY_NAMES[l.id] || l.name,
     icon: "🏠",
     listing: l,
   }));
@@ -540,7 +543,7 @@ function feedOutputItem(v, isLatest) {
   return `<div class="feed-item output">
     <span class="fi-rail"><span class="fi-dot">🎬</span></span>
     <div class="fi-body">
-      <div class="fi-line"><b>Published a new cut${isLatest ? " · latest" : ""}</b><span class="fi-ts">${fmtPST(v.created_at)}</span></div>
+      <div class="fi-line"><span class="fi-ts">${fmtPST(v.created_at)}</span><b>Published a new cut${isLatest ? " · latest" : ""}</b></div>
       ${versionItem(v, isLatest)}
     </div>
   </div>`;
@@ -550,8 +553,8 @@ function feedOutputItem(v, isLatest) {
 function feedActionItem(icon, text, tsMs) {
   return `<div class="feed-item action done">
     <span class="fi-rail"><span class="fi-dot">${icon || "•"}</span></span>
-    <div class="fi-body"><div class="fi-line"><b>${escapeHtml(text)}</b>
-    <span class="fi-ts">${tsMs ? fmtPST(tsMs) : ""}</span></div></div>
+    <div class="fi-body"><div class="fi-line"><span class="fi-ts">${tsMs ? fmtPST(tsMs) : ""}</span>
+    <b>${escapeHtml(text)}</b></div></div>
   </div>`;
 }
 
@@ -850,8 +853,8 @@ function renderStudio(d) {
     const item = document.createElement("div");
     item.className = "feed-item action running";
     item.innerHTML = `<span class="fi-rail"><span class="fi-dot">${icon}</span></span>
-      <div class="fi-body"><div class="fi-line"><b>${escapeHtml(text)}</b>
-      <span class="fi-ts">just now</span></div></div>`;
+      <div class="fi-body"><div class="fi-line"><span class="fi-ts">just now</span>
+      <b>${escapeHtml(text)}</b></div></div>`;
     feed.prepend(item);
     if (feedEmpty) feedEmpty.hidden = true;
   }
