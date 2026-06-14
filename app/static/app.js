@@ -54,14 +54,70 @@ async function pollJob(jobId, onTick) {
 }
 
 /* ========================== NAVIGATION ======================= */
-// Two views only: the listings grid (home) and a per-listing studio.
+// The sidebar lists projects; the main area shows the selected project's studio.
 const listingsPanel = document.getElementById("tab-listings");
 const detailEl = document.getElementById("listingDetail");
+const projectNavEl = document.getElementById("projectNav");
 
-function showListings() {
-  detailEl.hidden = true;
-  listingsPanel.hidden = false;
-  loadListings();
+// Placeholder projects we haven't wired to a real listing folder yet.
+const PLACEHOLDER_PROJECTS = [
+  { id: "__cafe__", label: "Cafe", icon: "☕", empty: true },
+];
+
+let projects = [];
+let activeProjectId = null;
+
+async function loadProjects() {
+  let listings = [];
+  try {
+    const r = await fetch("/api/listings");
+    listings = (await r.json()).listings || [];
+  } catch {
+    /* fall through to placeholders only */
+  }
+  // The first real listing is our "House Rental" demo project.
+  const real = listings.map((l, i) => ({
+    id: l.id,
+    label: i === 0 ? "House Rental" : l.name,
+    icon: "🏠",
+    listing: l,
+  }));
+  projects = [...real, ...PLACEHOLDER_PROJECTS];
+  renderProjectNav();
+
+  // Default to the first real project (or the first placeholder).
+  if (!activeProjectId && projects.length) selectProject(projects[0]);
+}
+
+function renderProjectNav() {
+  projectNavEl.innerHTML = "";
+  projects.forEach((p) => {
+    const btn = document.createElement("button");
+    btn.className = "project-item" + (p.empty ? " empty" : "") +
+      (p.id === activeProjectId ? " active" : "");
+    btn.innerHTML = `<span class="pi-ic">${p.icon}</span><span class="pi-label">${escapeHtml(p.label)}</span>`;
+    btn.addEventListener("click", () => selectProject(p));
+    projectNavEl.appendChild(btn);
+  });
+}
+
+function selectProject(p) {
+  activeProjectId = p.id;
+  renderProjectNav();
+  if (p.empty) showEmptyProject(p);
+  else openListingStudio(p.id);
+}
+
+function showEmptyProject(p) {
+  listingsPanel.hidden = true;
+  detailEl.hidden = false;
+  detailEl.innerHTML = `
+    <div class="empty-project">
+      <div class="ep-icon">${p.icon}</div>
+      <h2>${escapeHtml(p.label)}</h2>
+      <p class="muted">Your videographer is ready for ${escapeHtml(p.label)} next —
+      add its photos and it'll start filming a full social calendar on autopilot.</p>
+    </div>`;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -126,6 +182,17 @@ const INCLUDE_OPTIONS = [
 ];
 const PHOTO_LIMIT = 5; // show this many, then a "+N more" tile
 
+// Social delivery formats the agent can render to (key matches config.FORMAT_PRESETS).
+const FORMATS = [
+  { key: "reel", icon: "📸", label: "Instagram Reel", ratio: "9:16" },
+  { key: "tiktok", icon: "🎵", label: "TikTok", ratio: "9:16" },
+  { key: "shorts", icon: "▶️", label: "YouTube Shorts", ratio: "9:16" },
+  { key: "story", icon: "🟣", label: "Instagram Story", ratio: "9:16" },
+  { key: "snap", icon: "👻", label: "Snapchat Story", ratio: "9:16" },
+  { key: "youtube", icon: "📺", label: "YouTube", ratio: "16:9" },
+];
+const DEFAULT_FORMAT = "reel";
+
 let currentDetail = null;
 let showAllPhotos = false;
 
@@ -142,30 +209,109 @@ function fmtPST(ms) {
   });
 }
 
+// Derive a brand handle for cuts generated before we stored one.
+function postHandle(v) {
+  if (v.handle) return v.handle;
+  const slug = (v.title || v.name || "stay").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
+  return "@" + (slug || "stay");
+}
+
+// Fallback caption for older cuts that predate the post builder.
+function postCaption(v) {
+  if (v.caption) return v.caption;
+  const bits = [];
+  if (v.title) bits.push(v.title);
+  const info = [];
+  if (v.location) info.push(`📍 ${v.location}`);
+  if (v.price) info.push(`💰 ${v.price}`);
+  if (info.length) bits.push(info.join("  ·  "));
+  bits.push("📩 DM to book — link in bio");
+  return bits.join("\n\n");
+}
+
+// Color the #hashtags inside an already-escaped caption string.
+function highlightHashtags(escaped) {
+  return escaped.replace(/(#[A-Za-z0-9_]+)/g, '<span class="hash">$1</span>');
+}
+
+// A ready-to-post social card: format-shaped preview + caption + actions.
 function versionItem(v, isLatest) {
+  const ar = (v.ratio || "9:16").replace(":", " / ");
+  const handle = postHandle(v);
+  const caption = postCaption(v);
   const stats = [
     v.scene_count ? `${v.scene_count} scenes` : "",
     v.info_card_count ? `${v.info_card_count} info cards` : "",
-    v.location ? `📍 ${v.location}` : "",
-    v.price ? `💰 ${v.price}` : "",
+    v.voice ? `🎙 ${v.voice}` : "",
   ]
     .filter(Boolean)
     .map((s) => `<span class="vstat">${escapeHtml(s)}</span>`)
     .join("");
   return `
-    <div class="version">
-      <button class="version-video" data-src="${v.video_url}" ${v.poster ? `data-poster="${v.poster}"` : ""}>
-        ${v.poster ? `<img class="vv-poster" src="${v.poster}" alt="" />` : `<span class="vv-blank"></span>`}
-        <span class="vv-play">▶</span>
-        ${isLatest ? `<span class="latest-chip">Latest</span>` : ""}
-      </button>
-      <div class="version-meta">
-        ${v.title ? `<h4>${escapeHtml(v.title)}</h4>` : ""}
-        <span class="ts">🕒 ${fmtPST(v.created_at)}</span>
+    <div class="postcard">
+      <div class="pc-media" style="aspect-ratio:${ar}">
+        <button class="version-video" data-src="${v.video_url}" ${v.poster ? `data-poster="${v.poster}"` : ""}>
+          ${v.poster ? `<img class="vv-poster" src="${v.poster}" alt="" />` : `<span class="vv-blank"></span>`}
+          <span class="vv-play">▶</span>
+          ${isLatest ? `<span class="latest-chip">Latest</span>` : ""}
+        </button>
+      </div>
+      <div class="pc-body">
+        <div class="pc-head">
+          <span class="pc-handle">${escapeHtml(handle)}</span>
+          <span class="pc-fmt">${escapeHtml(v.format_label || "Social")}${v.ratio ? ` · ${v.ratio}` : ""}</span>
+        </div>
+        <div class="pc-caption">${highlightHashtags(escapeHtml(caption))}</div>
+        <div class="pc-music">🎵 Recommended audio: <b>${escapeHtml(v.music || "warm")}</b> bed${v.voice ? ` · ${escapeHtml(v.voice)} voiceover` : ""}</div>
         ${stats ? `<div class="vstats">${stats}</div>` : ""}
-        <a class="btn btn-ghost btn-sm" download href="${v.video_url}">Download MP4</a>
+        <div class="pc-actions">
+          <button class="btn btn-sm pc-copy" data-cap="${encodeURIComponent(caption)}">📋 Copy caption</button>
+          <a class="btn btn-ghost btn-sm" download href="${v.video_url}">⬇ Download MP4</a>
+          <button class="btn btn-ghost btn-sm pc-publish" title="Connect a social account to publish">🚀 Publish</button>
+        </div>
+        ${takesPanel(v)}
       </div>
     </div>`;
+}
+
+const fmtScore = (s) => (s == null ? "" : Number(s).toFixed(2));
+
+// Best-of-N take picker: per beat, every rendered take with its motion score.
+// Click a take to select it; "Re-stitch" rebuilds the cut from the chosen takes
+// (no Cosmos re-run). Auto-pick is the take that was selected at generation time.
+function takesPanel(v) {
+  if (!v.has_takes || !(v.takes && v.takes.length)) return "";
+  const beats = v.takes
+    .map((beat) => {
+      const takes = (beat.takes || [])
+        .map((t) => {
+          const sel = t.chosen ? " sel" : "";
+          const badge = t.score != null ? fmtScore(t.score) : `T${t.index + 1}`;
+          const media = t.poster
+            ? `<img src="${t.poster}" alt="" />`
+            : `<span class="vv-blank"></span>`;
+          return `<button class="take${sel}" data-beat="${beat.beat}" data-take="${t.index}"
+              data-url="${t.url}" data-poster="${t.poster || ""}" title="motion score ${badge}">
+              ${media}
+              <span class="take-badge">${badge}</span>
+              <span class="take-play">▶</span>
+            </button>`;
+        })
+        .join("");
+      const label = escapeHtml(beat.caption || `Beat ${beat.beat + 1}`);
+      return `<div class="take-beat"><div class="tb-label">${label}</div>
+        <div class="tb-takes">${takes}</div></div>`;
+    })
+    .join("");
+  return `
+    <details class="pc-takes" data-vid="${v.vid}">
+      <summary>🎞 Take picker — best-of-${v.best_of_n || v.takes[0].takes.length} · ${v.takes.length} beats</summary>
+      <div class="takes-beats">${beats}</div>
+      <div class="takes-actions">
+        <button class="btn btn-sm pc-restitch" data-vid="${v.vid}">✂ Re-stitch with selected takes</button>
+        <span class="restitch-status"></span>
+      </div>
+    </details>`;
 }
 
 // Big popup player. Created once and reused.
@@ -263,7 +409,7 @@ function buildGenOverlay() {
       <div class="gen-head">
         <div class="gen-spinner"></div>
         <div class="gen-headtext">
-          <h2>Creating your cinematic trailer</h2>
+          <h2>Your videographer is on set</h2>
           <p class="gen-now">Warming up…</p>
         </div>
       </div>
@@ -339,152 +485,466 @@ function closeGenOverlay() {
   if (ov) ov.classList.remove("open");
 }
 
+// ---- Soul as a nicely-formatted, editable markdown document ----
+function composeSoulMarkdown(det) {
+  const lines = [`# ${det.title || "Untitled venue"}`];
+  if (det.summary) lines.push("", det.summary);
+  const facts = [];
+  if (det.location) facts.push(`**Location:** ${det.location}`);
+  if (det.price) facts.push(`**Price:** ${det.price}`);
+  if (det.host) facts.push(`**Host:** ${det.host}`);
+  const cfg = [det.guests, det.bedrooms, det.beds, det.baths].filter(Boolean).join(" · ");
+  if (cfg) facts.push(`**Layout:** ${cfg}`);
+  if (facts.length) lines.push("", "## Details", ...facts.map((f) => "- " + f));
+  if (det.amenities && det.amenities.length)
+    lines.push("", "## Amenities", ...det.amenities.map((a) => "- " + a));
+  return lines.join("\n");
+}
+
+// Tiny markdown -> HTML renderer (headings, bold/italic, bullet lists, paragraphs).
+function renderMarkdown(md) {
+  const inline = (s) =>
+    escapeHtml(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<em>$2</em>");
+  let html = "", inList = false;
+  const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+  (md || "").split("\n").forEach((raw) => {
+    const line = raw.trimEnd();
+    if (/^#\s+/.test(line)) { closeList(); html += `<h1>${inline(line.replace(/^#\s+/, ""))}</h1>`; }
+    else if (/^##\s+/.test(line)) { closeList(); html += `<h2>${inline(line.replace(/^##\s+/, ""))}</h2>`; }
+    else if (/^###\s+/.test(line)) { closeList(); html += `<h3>${inline(line.replace(/^###\s+/, ""))}</h3>`; }
+    else if (/^[-*]\s+/.test(line)) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${inline(line.replace(/^[-*]\s+/, ""))}</li>`; }
+    else if (line.trim() === "") { closeList(); }
+    else { closeList(); html += `<p>${inline(line)}</p>`; }
+  });
+  closeList();
+  return html;
+}
+
+// ---- Agent Loop activity feed ----
+// Map a backend progress label to a feed action (icon + human line).
+function actionFor(label) {
+  const l = (label || "").toLowerCase();
+  if (l.includes("research") || l.includes("neighbor") || l.includes("scout")) return ["🔎", "Researching the neighborhood via Tavily"];
+  if (l.includes("curat") || l.includes("best") || l.includes("plan")) return ["🖼️", "Curating the strongest shots with GPT-4o"];
+  if (l.includes("film")) return ["🎬", "Filming scenes with NVIDIA Cosmos 3"];
+  if (l.includes("map") || l.includes("price") || l.includes("rating") || l.includes("detail") || l.includes("card")) return ["🗺️", "Designing maps & info cards"];
+  if (l.includes("stitch") || l.includes("concat")) return ["🎞️", "Stitching & color-grading the cut"];
+  if (l.includes("scor") || l.includes("narrat")) return ["🔊", "Scoring & narrating with OpenAI"];
+  if (l.includes("wrap") || l.includes("done")) return ["✅", "Wrapping up"];
+  return ["⚙️", label || "Working…"];
+}
+
+function feedOutputItem(v, isLatest) {
+  return `<div class="feed-item output">
+    <span class="fi-rail"><span class="fi-dot">🎬</span></span>
+    <div class="fi-body">
+      <div class="fi-line"><b>Published a new cut${isLatest ? " · latest" : ""}</b><span class="fi-ts">${fmtPST(v.created_at)}</span></div>
+      ${versionItem(v, isLatest)}
+    </div>
+  </div>`;
+}
+
+// One non-video timeline entry (a thing the agent did).
+function feedActionItem(icon, text, tsMs) {
+  return `<div class="feed-item action done">
+    <span class="fi-rail"><span class="fi-dot">${icon || "•"}</span></span>
+    <div class="fi-body"><div class="fi-line"><b>${escapeHtml(text)}</b>
+    <span class="fi-ts">${tsMs ? fmtPST(tsMs) : ""}</span></div></div>
+  </div>`;
+}
+
+// Merge the persisted activity log with published cuts into one timeline.
+function buildAgentFeed(activity, versions) {
+  const items = [];
+  (activity || []).forEach((a) =>
+    items.push({ ts: (a.ts || 0) * 1000, kind: "action", icon: a.icon, text: a.text })
+  );
+  (versions || []).forEach((v, i) =>
+    items.push({ ts: v.created_at || 0, kind: "output", v, latest: i === 0 })
+  );
+  items.sort((x, y) => y.ts - x.ts);
+  return items
+    .map((it) =>
+      it.kind === "output" ? feedOutputItem(it.v, it.latest) : feedActionItem(it.icon, it.text, it.ts)
+    )
+    .join("");
+}
+
 function renderStudio(d) {
   currentDetail = d;
   const det = d.details || {};
 
   const addTile = `<button class="thumb add-tile" title="Add photos"><span class="at-plus">＋</span><span>Add photos</span></button>`;
-  let fileTiles;
-  if (showAllPhotos || d.photos.length <= PHOTO_LIMIT) {
-    fileTiles = d.photos.map(photoTile).join("") + addTile;
-  } else {
-    fileTiles = d.photos.slice(0, PHOTO_LIMIT).map(photoTile).join("");
-    fileTiles += `<button class="thumb more-tile">+${d.photos.length - PHOTO_LIMIT}<span>more</span></button>`;
-    fileTiles += addTile;
-  }
+  const allTiles = d.photos.map(photoTile).join("") + addTile;
 
-  // Only options the PDF actually backs are enabled; the rest show disabled.
-  const available = new Set(d.available || INCLUDE_OPTIONS.map((o) => o.key));
-  const toggles = INCLUDE_OPTIONS.map((o) => {
-    const off = !available.has(o.key);
-    return `<button class="inc-toggle ${off ? "off" : "active"}" data-include="${o.key}"
-      ${off ? `disabled title="Not found in the listing PDF"` : ""}>
-      <span class="inc-ic">${o.icon}</span><span>${o.label}</span>
-      <span class="inc-check">${off ? "—" : "✓"}</span>
-    </button>`;
-  }).join("");
+  const genCount = d.versions.length;
+  const soulMd = composeSoulMarkdown(det);
 
-  const versionsHtml = d.versions.length
-    ? d.versions.map((v, i) => versionItem(v, i === 0)).join("")
-    : "";
+  // Marketing dossier: the manager agent's brand, brief, and activity.
+  const dossier = d.brand || {};
+  const brandInfo = dossier.brand || {};
+  const brief = dossier.brief || {};
+  const activity = dossier.activity || [];
+  const briefFmt = brief.format || DEFAULT_FORMAT;
+  const feedHtml = buildAgentFeed(activity, d.versions);
+  const briefAssets = (brief.assets || [])
+    .map((a) => {
+      const url = d.photos[a.index];
+      return url
+        ? `<div class="ba-tile" title="${escapeHtml(a.reason || "")}"><img src="${url}" alt="" /><span class="ba-i">${a.index}</span></div>`
+        : "";
+    })
+    .join("");
+
+  const vids = d.videos || [];
+  const videoTiles = vids.length
+    ? vids.map((u) => `<div class="thumb"><video src="${u}" muted></video></div>`).join("")
+    : `<p class="muted empty-note">No videos uploaded yet — drop clips into this project's folder to use them as source footage.</p>`;
 
   detailEl.innerHTML = `
-    <div class="studio-grid">
-      <section class="card files-card">
-        <div class="card-h"><h2>Property images</h2><span class="muted small">${d.photo_count} photos</span></div>
-        <div class="thumbs detail-files">${fileTiles}</div>
-      </section>
+    <div class="project-head">
+      <div class="proj-tabs">
+        <button class="proj-tab active" data-tab="soul">🪶 Soul</button>
+        <button class="proj-tab" data-tab="assets">🖼️ Images &amp; Videos</button>
+        <button class="proj-tab" data-tab="memory">🧠 Memory</button>
+        <button class="proj-tab" data-tab="human">🎛️ Human Drive</button>
+        <button class="proj-tab" data-tab="agent">🤖 Agent Loop${genCount ? ` <span class="tab-badge">${genCount}</span>` : ""}</button>
+      </div>
+    </div>
 
-      <section class="card config-card">
-        <div class="card-h"><h2>Property details</h2></div>
-
-        <div class="cfg-cols">
-          <div class="cfg-col">
-            <div class="form-grid">
-              ${field("f-title", "Property name", det.title, "Wiley's Cottage")}
-              ${field("f-location", "Location", det.location, "Hollywood, Los Angeles")}
-              ${field("f-price", "Nightly price", det.price, "$239 / night")}
-              ${field("f-host", "Host", det.host, "Joanne")}
-              ${field("f-guests", "Guests", det.guests, "3 guests")}
-              ${field("f-bedrooms", "Bedrooms", det.bedrooms, "1 bedroom")}
-              ${field("f-beds", "Beds", det.beds, "1 bed")}
-              ${field("f-baths", "Baths", det.baths, "1 bath")}
-            </div>
-
-            <label class="cfg-label">Amenities</label>
-            <div class="chip-editor f-amenities compact">
-              <span class="chips"></span>
-              <input class="chip-add" type="text" placeholder="Add amenity + Enter" />
-            </div>
-
-            <label class="cfg-label">Summary</label>
-            <textarea class="textarea f-summary" rows="2"
-              placeholder="One warm sentence about the place…">${escapeHtml(det.summary || "")}</textarea>
-          </div>
-
-          <div class="cfg-col">
-            <label class="cfg-label">Include in the video</label>
-            <div class="include-grid">${toggles}</div>
-
-            <button class="btn regen-btn">
-              <span class="rb-main">✨ Generate video with NVIDIA Cosmos 3</span>
-              <span class="rb-sub">on NVIDIA® H200 NVLink GPU</span>
-            </button>
-            <label class="tavily-opt">
-              <input type="checkbox" class="f-tavily" checked />
-              <span>Allow using Tavily search to research the neighborhood</span>
-            </label>
-          </div>
-        </div>
+    <!-- ============ TAB: SOUL (formatted, editable markdown identity) ============ -->
+    <div class="proj-panel" data-panel="soul">
+      <p class="panel-intro muted">The Soul is the source of truth for this place — its facts, story and vibe, as a living document. Your videographer reads it before every shoot.</p>
+      <section class="card soul-sheet">
+        <div class="card-h"><h2>Soul</h2><span class="muted small">editable · markdown</span></div>
+        <div class="md-doc" contenteditable="true" spellcheck="false">${renderMarkdown(soulMd)}</div>
       </section>
     </div>
 
-    <section class="card versions-card">
-      <div class="card-h"><h2>Past Generations <span class="muted small">(${d.versions.length})</span></h2></div>
-      <div class="versions">${versionsHtml}</div>
-      <p class="muted empty-note" ${d.versions.length ? "hidden" : ""}>
-        No videos yet — hit “Generate new trailer” to make your first cut.
-      </p>
-    </section>
+    <!-- ============ TAB: IMAGES & VIDEOS (uploaded assets) ============ -->
+    <div class="proj-panel" data-panel="assets" hidden>
+      <p class="panel-intro muted">Everything you've uploaded for this project — the raw material your videographer shoots from.</p>
+      <section class="card">
+        <div class="card-h"><h2>Images</h2><span class="muted small">${d.photo_count} photos</span></div>
+        <div class="thumbs detail-files gallery">${allTiles}</div>
+      </section>
+      <section class="card">
+        <div class="card-h"><h2>Videos</h2><span class="muted small">${vids.length} clip${vids.length === 1 ? "" : "s"}</span></div>
+        <div class="thumbs detail-files gallery">${videoTiles}</div>
+      </section>
+    </div>
+
+    <!-- ============ TAB: MEMORY (marketing manager dossier) ============ -->
+    <div class="proj-panel" data-panel="memory" hidden>
+      <p class="panel-intro muted">An always-on marketing manager researches the venue, locks in a consistent brand, and keeps a durable creative brief — the memory every video is grounded on.</p>
+
+      <section class="card mgr-card">
+        <div class="card-h"><h2>🧠 Marketing manager</h2><span class="muted small">OpenClaw-style · GPT-4o</span></div>
+        ${brandInfo.oneliner
+          ? `<p class="mgr-oneliner">“${escapeHtml(brandInfo.oneliner)}”</p>`
+          : `<p class="muted">No brand yet. Run the marketing manager — it'll research the venue, invent the missing brand facts (kept consistent across videos), and draft a creative brief.</p>`}
+        <div class="mgr-meta">
+          ${brandInfo.audience ? `<span class="vstat">🎯 ${escapeHtml(brandInfo.audience)}</span>` : ""}
+          ${brandInfo.tone ? `<span class="vstat">🎨 ${escapeHtml(brandInfo.tone)}</span>` : ""}
+        </div>
+        ${brief.pitch ? `<p class="mgr-pitch"><b>Pitch:</b> ${escapeHtml(brief.pitch)}</p>` : ""}
+        ${(brief.hooks || []).length
+          ? `<div class="mgr-hooks">${brief.hooks.map((h) => `<span class="hook-chip">“${escapeHtml(h)}”</span>`).join("")}</div>`
+          : ""}
+        ${brief.voiceover
+          ? `<p class="mgr-vo"><span class="mgr-vo-l">🎙 Voiceover</span> ${escapeHtml(brief.voiceover)}</p>`
+          : ""}
+        ${briefAssets
+          ? `<label class="cfg-label" style="margin-top:12px">Recommended assets &amp; order</label><div class="ba-row">${briefAssets}</div>`
+          : ""}
+        <div class="mgr-meta">
+          ${brief.music ? `<span class="vstat">🎵 ${escapeHtml(brief.music)}</span>` : ""}
+          ${brief.voice ? `<span class="vstat">🎙 ${escapeHtml(brief.voice)}</span>` : ""}
+          ${brief.format ? `<span class="vstat">🎞 ${escapeHtml(brief.format)}</span>` : ""}
+        </div>
+        <button class="btn btn-ghost run-agent-btn">🤖 Run marketing manager</button>
+      </section>
+    </div>
+
+    <!-- ============ TAB: HUMAN DRIVE (you brief + fire the cut) ============ -->
+    <div class="proj-panel" data-panel="human" hidden>
+      <p class="panel-intro muted">Take the wheel: pick a format, add an optional director note, and fire the cut yourself. It's grounded on the brand Memory — progress streams into the Agent Loop.</p>
+
+      <section class="card brief-card">
+        <label class="cfg-label">Format</label>
+        <div class="fmt-grid">
+          ${FORMATS.map((f) => `
+            <button class="fmt-chip ${f.key === briefFmt ? "active" : ""}" data-fmt="${f.key}">
+              <span class="fmt-ic">${f.icon}</span>
+              <span class="fmt-l">${f.label}</span>
+              <span class="fmt-r">${f.ratio}</span>
+            </button>`).join("")}
+        </div>
+        <div class="brief-row">
+          <textarea class="agent-prompt" rows="2"
+            placeholder="Add a director note for this cut (optional) — the brand brief is applied automatically."></textarea>
+          <button class="btn regen-btn">
+            <span class="rb-main">✨ Generate</span>
+            <span class="rb-sub">NVIDIA Cosmos 3 · H200</span>
+          </button>
+        </div>
+        <label class="tavily-opt">
+          <input type="checkbox" class="f-tavily" checked />
+          <span>Allow using Tavily search to research the neighborhood</span>
+        </label>
+        <label class="tavily-opt">
+          <input type="checkbox" class="f-walkthrough" />
+          <span>🚶 Walkthrough mode — first-person POV walk-in through each room (leans into Cosmos's world model)</span>
+        </label>
+      </section>
+    </div>
+
+    <!-- ============ TAB: AGENT LOOP (activity + published cuts) ============ -->
+    <div class="proj-panel" data-panel="agent" hidden>
+      <p class="panel-intro muted">Everything your videographer does — and every ready-to-post cut it publishes — lands here in real time.</p>
+
+      <section class="card feed-card">
+        <div class="card-h"><h2>Agent activity</h2></div>
+        <div class="agent-feed">${feedHtml}</div>
+        <p class="muted empty-note feed-empty" ${genCount ? "hidden" : ""}>
+          Idle — run the marketing manager or drive a cut yourself, and it'll start working here.
+        </p>
+      </section>
+    </div>
   `;
 
-  // Expand photos in place (don't re-render — keeps the edited form intact).
-  const moreTile = detailEl.querySelector(".more-tile");
-  if (moreTile) {
-    moreTile.addEventListener("click", () => {
-      showAllPhotos = true;
-      detailEl.querySelector(".detail-files").innerHTML =
-        currentDetail.photos.map(photoTile).join("") + addTile;
+  // ---- Tab switching ----
+  const panels = detailEl.querySelectorAll(".proj-panel");
+  detailEl.querySelectorAll(".proj-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      detailEl.querySelectorAll(".proj-tab").forEach((t) => t.classList.toggle("active", t === tab));
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== tab.dataset.tab));
+    });
+  });
+
+  const wireVideoButtons = (root) =>
+    root.querySelectorAll(".version-video").forEach((b) => {
+      b.addEventListener("click", () => openLightbox(b.dataset.src, b.dataset.poster));
+    });
+
+  // Copy-to-clipboard caption + display-only publish button on each post card.
+  const wirePostButtons = (root) => {
+    root.querySelectorAll(".pc-copy").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(decodeURIComponent(b.dataset.cap || ""));
+        } catch (_e) {
+          /* clipboard may be blocked; ignore */
+        }
+        const prev = b.textContent;
+        b.textContent = "✓ Copied!";
+        b.classList.add("ok");
+        setTimeout(() => {
+          b.textContent = prev;
+          b.classList.remove("ok");
+        }, 1600);
+      });
+    });
+    root.querySelectorAll(".pc-publish").forEach((b) => {
+      b.addEventListener("click", () => {
+        const prev = b.textContent;
+        b.textContent = "🔌 Connect account";
+        setTimeout(() => (b.textContent = prev), 1800);
+      });
+    });
+  };
+
+  // Best-of-N take picker: select takes per beat, then re-stitch the cut.
+  const wireTakeButtons = (root) => {
+    root.querySelectorAll(".pc-takes").forEach((panel) => {
+      panel.querySelectorAll(".take").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          if (e.target.closest(".take-play")) {
+            openLightbox(btn.dataset.url, btn.dataset.poster || undefined);
+            return;
+          }
+          btn.parentElement
+            .querySelectorAll(".take")
+            .forEach((t) => t.classList.toggle("sel", t === btn));
+        });
+      });
+
+      const restitch = panel.querySelector(".pc-restitch");
+      const status = panel.querySelector(".restitch-status");
+      if (!restitch) return;
+      restitch.addEventListener("click", async () => {
+        const vid = panel.dataset.vid;
+        const picks = {};
+        panel.querySelectorAll(".take-beat").forEach((beatEl) => {
+          const sel = beatEl.querySelector(".take.sel");
+          if (sel) picks[sel.dataset.beat] = Number(sel.dataset.take);
+        });
+        const prev = restitch.textContent;
+        restitch.disabled = true;
+        restitch.textContent = "✂ Re-stitching…";
+        if (status) status.textContent = "";
+        try {
+          const form = new FormData();
+          form.append("picks", JSON.stringify(picks));
+          const r = await fetch(`/api/listings/${d.id}/versions/${vid}/restitch`, {
+            method: "POST",
+            body: form,
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const fresh = await r.json();
+          const card = panel.closest(".postcard");
+          const vbtn = card && card.querySelector(".version-video");
+          if (vbtn) {
+            vbtn.dataset.src = fresh.video_url;
+            if (fresh.poster) {
+              vbtn.dataset.poster = fresh.poster;
+              const img = vbtn.querySelector(".vv-poster");
+              if (img) img.src = fresh.poster;
+            }
+          }
+          if (status) status.textContent = "✓ Re-stitched";
+        } catch (err) {
+          if (status) status.textContent = `✗ ${err.message}`;
+        } finally {
+          restitch.disabled = false;
+          restitch.textContent = prev;
+        }
+      });
+    });
+  };
+
+  const wireCards = (root) => {
+    wireVideoButtons(root);
+    wirePostButtons(root);
+    wireTakeButtons(root);
+  };
+  wireCards(detailEl);
+
+  // ---- Agent Loop: brief + live activity feed ----
+  const feed = detailEl.querySelector(".agent-feed");
+  const feedEmpty = detailEl.querySelector(".feed-empty");
+  const regenBtn = detailEl.querySelector(".regen-btn");
+
+  // Format selector (single-select); defaults to the brief's recommended format.
+  let selectedFmt = briefFmt;
+  detailEl.querySelectorAll(".fmt-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      detailEl.querySelectorAll(".fmt-chip").forEach((b) => b.classList.toggle("active", b === btn));
+      selectedFmt = btn.dataset.fmt;
+    });
+  });
+
+  function markRunningDone() {
+    feed.querySelectorAll(".feed-item.action.running").forEach((el) => {
+      el.classList.remove("running");
+      el.classList.add("done");
+    });
+  }
+  let lastActionText = "";
+  function addAction(icon, text) {
+    if (text === lastActionText) return;
+    lastActionText = text;
+    markRunningDone();
+    const item = document.createElement("div");
+    item.className = "feed-item action running";
+    item.innerHTML = `<span class="fi-rail"><span class="fi-dot">${icon}</span></span>
+      <div class="fi-body"><div class="fi-line"><b>${escapeHtml(text)}</b>
+      <span class="fi-ts">just now</span></div></div>`;
+    feed.prepend(item);
+    if (feedEmpty) feedEmpty.hidden = true;
+  }
+
+  // ---- Run the marketing manager (research -> brand -> brief) ----
+  const runAgentBtn = detailEl.querySelector(".run-agent-btn");
+  if (runAgentBtn) {
+    runAgentBtn.addEventListener("click", async () => {
+      runAgentBtn.disabled = true;
+      regenBtn.disabled = true;
+      lastActionText = "";
+      // Jump to the loop so the research → brand → brief steps stream live.
+      detailEl.querySelector('.proj-tab[data-tab="agent"]')?.click();
+      addAction("🤖", "Marketing manager starting…");
+      try {
+        const form = new FormData();
+        form.append("fmt", selectedFmt);
+        const r = await fetch(`/api/listings/${d.id}/agent/run`, { method: "POST", body: form });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || "Agent run failed");
+        await pollJob(data.job_id, (_c, _t, label) => {
+          const m = (label || "").match(/^(\S+)\s+([\s\S]*)$/);
+          if (m) addAction(m[1], m[2]);
+          else addAction("⚙️", label || "Working…");
+        });
+        markRunningDone();
+        // Re-render from the updated dossier, then reveal the fresh brief in Memory.
+        await openListingStudio(d.id);
+        detailEl.querySelector('.proj-tab[data-tab="memory"]')?.click();
+      } catch (err) {
+        addAction("⚠️", "Marketing manager failed: " + err.message);
+        markRunningDone();
+        runAgentBtn.disabled = false;
+        regenBtn.disabled = false;
+      }
     });
   }
 
-  wireChipEditor(detailEl.querySelector(".f-amenities"), det.amenities);
-
-  detailEl.querySelectorAll(".version-video").forEach((b) => {
-    b.addEventListener("click", () => openLightbox(b.dataset.src, b.dataset.poster));
-  });
-
-  detailEl.querySelectorAll(".inc-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => btn.classList.toggle("active"));
-  });
-
-  const regenBtn = detailEl.querySelector(".regen-btn");
-  const val = (cls) => (detailEl.querySelector(cls)?.value || "").trim();
-
   regenBtn.addEventListener("click", async () => {
-    const includes = [...detailEl.querySelectorAll(".inc-toggle.active")].map((b) => b.dataset.include);
+    const available = new Set(d.available || INCLUDE_OPTIONS.map((o) => o.key));
+    const includes = [...available];
     if (detailEl.querySelector(".f-tavily")?.checked) includes.push("tavily");
 
-    // Build the brief from the (edited) form fields.
-    const lines = [];
-    if (val(".f-title")) lines.push(`Property: ${val(".f-title")}`);
-    if (val(".f-location")) lines.push(`Location: ${val(".f-location")}`);
-    const cfg = [val(".f-guests"), val(".f-bedrooms"), val(".f-beds"), val(".f-baths")].filter(Boolean);
-    if (cfg.length) lines.push(cfg.join(" · "));
-    if (val(".f-host")) lines.push(`Host: ${val(".f-host")}`);
-    if (val(".f-summary")) lines.push(val(".f-summary"));
-    const amenities = readChips(detailEl.querySelector(".f-amenities"));
-    if (amenities.length) lines.push("Amenities: " + amenities.join(", "));
+    // Brief = the Soul document + the agent prompt for this specific cut.
+    const soulText = (detailEl.querySelector(".md-doc")?.innerText || "").trim();
+    const prompt = (detailEl.querySelector(".agent-prompt")?.value || "").trim();
+    const instructions = [soulText, prompt && `Director note for this cut: ${prompt}`]
+      .filter(Boolean)
+      .join("\n\n");
 
+    const fmtLabel = (FORMATS.find((f) => f.key === selectedFmt) || {}).label || selectedFmt;
     regenBtn.disabled = true;
-    openGenOverlay();
+    lastActionText = "";
+    // Jump to the loop so generation progress streams live.
+    detailEl.querySelector('.proj-tab[data-tab="agent"]')?.click();
+    addAction("🧠", `Reading the Soul · targeting ${fmtLabel}`);
     try {
+      const walkthrough = detailEl.querySelector(".f-walkthrough")?.checked;
+      if (walkthrough) addAction("🚶", "Walkthrough mode — first-person POV walk-in");
       const form = new FormData();
-      form.append("instructions", lines.join("\n"));
-      form.append("price", val(".f-price"));
+      form.append("instructions", instructions);
+      form.append("price", det.price || "");
       form.append("include", includes.join(","));
+      form.append("fmt", selectedFmt);
+      form.append("walkthrough", walkthrough ? "1" : "0");
       const r = await fetch(`/api/listings/${d.id}/generate`, { method: "POST", body: form });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || "Generation failed");
-      await pollJob(data.job_id, (c, t, label) => updateGenOverlay(c, t, label, "running"));
-      updateGenOverlay(1, 1, "Done", "done");
-      await sleep(1100);
-      closeGenOverlay();
-      await openListingStudio(d.id); // re-render with the new version on top
+      await pollJob(data.job_id, (c, t, label) => {
+        const [icon, text] = actionFor(label);
+        addAction(icon, t > 0 && label && label.toLowerCase().includes("film")
+          ? `Filming scene ${Math.min(c + 1, t)} of ${t} with NVIDIA Cosmos 3`
+          : text);
+      });
+      markRunningDone();
+      // Pull the fresh version and publish it at the top of the loop.
+      const fresh = await (await fetch(`/api/listings/${d.id}`)).json();
+      currentDetail = fresh;
+      const v = (fresh.versions || [])[0];
+      if (v) {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = feedOutputItem(v, true);
+        const node = wrap.firstElementChild;
+        feed.prepend(node);
+        wireCards(node);
+      }
+      const badge = detailEl.querySelector('.proj-tab[data-tab="agent"]');
+      if (badge) badge.innerHTML = `🤖 Agent Loop <span class="tab-badge">${(fresh.versions || []).length}</span>`;
     } catch (err) {
-      genError(err.message);
+      addAction("⚠️", "Generation failed: " + err.message);
+      markRunningDone();
+    } finally {
       regenBtn.disabled = false;
-      setTimeout(closeGenOverlay, 3000);
     }
   });
 }
@@ -501,8 +961,8 @@ async function openListingStudio(id) {
     renderStudio(await r.json());
   } catch (e) {
     detailEl.innerHTML = `<p class="error">${e.message}</p>
-      <button class="btn btn-ghost back-btn">← All listings</button>`;
-    detailEl.querySelector(".back-btn").addEventListener("click", showListings);
+      <button class="btn btn-ghost back-btn">↺ Reload projects</button>`;
+    detailEl.querySelector(".back-btn").addEventListener("click", loadProjects);
   }
 }
 
@@ -514,4 +974,4 @@ function escapeHtml(s) {
 
 /* ============================ INIT ============================ */
 checkHealth();
-showListings();
+loadProjects();

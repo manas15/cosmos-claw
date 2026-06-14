@@ -328,6 +328,18 @@ def version_paths(listing_id: str, vid: str) -> tuple[Path, Path, Path]:
     return base.with_suffix(".mp4"), base.with_suffix(".jpg"), base.with_suffix(".json")
 
 
+def takes_dir(listing_id: str, vid: str) -> Path:
+    """Per-version dir holding best-of-N takes + the re-stitch manifest.
+
+    Lives under OUTPUT_DIR so the take previews are web-served at /outputs/...
+    """
+    return config.OUTPUT_DIR / f"listing_{listing_id}_{vid}_takes"
+
+
+def takes_manifest_path(listing_id: str, vid: str) -> Path:
+    return takes_dir(listing_id, vid) / "manifest.json"
+
+
 def save_version_meta(listing_id: str, vid: str, meta: dict) -> None:
     _, _, mpath = version_paths(listing_id, vid)
     mpath.write_text(json.dumps(meta, indent=2), encoding="utf-8")
