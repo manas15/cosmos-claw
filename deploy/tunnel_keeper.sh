@@ -7,15 +7,17 @@
 set -u
 
 KEY="${KEY:-$HOME/.ssh/nebius_cosmos}"
-REMOTE="${REMOTE:-cosmos@89.169.123.40}"
+REMOTE="${REMOTE:-cosmos@195.242.31.145}"
 LOCAL_PORT="${LOCAL_PORT:-8800}"
 REMOTE_PORT="${REMOTE_PORT:-8000}"
+# vLLM-Omni has no /health; /v1/models is the cheap liveness probe.
+HEALTH_PATH="${HEALTH_PATH:-/v1/models}"
 
 # Require two consecutive failures before tearing down, so a slow health check
 # during a big clip transfer doesn't kill the in-flight tunnel.
 fails=0
 while true; do
-  code=$(curl -s -m 12 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LOCAL_PORT}/health" 2>/dev/null || echo 000)
+  code=$(curl -s -m 12 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LOCAL_PORT}${HEALTH_PATH}" 2>/dev/null || echo 000)
   if [ "$code" = "200" ]; then
     fails=0
   else
