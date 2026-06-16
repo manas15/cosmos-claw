@@ -367,41 +367,6 @@ def api_listing_brand(listing_id: str) -> JSONResponse:
     return JSONResponse(brand.load_or_seed(listing))
 
 
-def _run_agent_job(job_id: str, listing_id: str, fmt: str) -> None:
-    """Background: run a full marketing-manager pass, streaming steps to the job."""
-    from . import marketing_agent
-
-    def on_step(icon: str, text: str) -> None:
-        job = JOBS.get(job_id)
-        if job is not None:
-            job.update(label=f"{icon} {text}")
-
-    try:
-        listing = listings.get_listing(listing_id)
-        if listing is None:
-            raise RuntimeError("Listing no longer exists.")
-        marketing_agent.run(listing, fmt=fmt, on_step=on_step)
-        JOBS[job_id].update(status="done", label="✨ Brief ready", listing_id=listing_id)
-    except Exception as e:  # surface to UI
-        JOBS[job_id].update(status="error", error=f"Agent run failed: {e}")
-
-
-@app.post("/api/listings/{listing_id}/agent/run")
-def api_listing_agent_run(listing_id: str, fmt: str = Form("")) -> JSONResponse:
-    listing = listings.get_listing(listing_id)
-    if listing is None:
-        raise HTTPException(404, "Unknown listing.")
-    job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {
-        "status": "running", "current": 0, "total": 0,
-        "label": "Marketing manager starting…", "error": None, "listing_id": listing_id,
-    }
-    threading.Thread(
-        target=_run_agent_job, args=(job_id, listing_id, fmt), daemon=True
-    ).start()
-    return JSONResponse({"job_id": job_id})
-
-
 def _version_payload_for(listing_id: str, vid: str) -> JSONResponse:
     for v in listings.list_versions(listing_id):
         if v["vid"] == vid:

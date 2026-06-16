@@ -181,8 +181,10 @@ growing forever. Tune `ACTIVITY_CAP`, `VERSION_RETENTION`, `REFLECT_EVERY` in `.
 
 ### Drive it by hand
 
-The same brain runs from the **Human Drive** / **Agent Loop** tabs in the UI, or
-the terminal:
+Creation is CLI-only — every research, generation, goal, and feedback action runs
+from the terminal. The web UI is a read-only studio: watch the **Agent Loop**,
+read the **Memory** dossier, and post/discard cuts, while the commands below do
+the work (`generate` talks to a running `python -m app` server).
 
 ```bash
 python -m app.agent list                                   # projects + dossier status

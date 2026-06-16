@@ -1,6 +1,5 @@
 const statusEl = document.getElementById("status");
 const sponsorsEl = document.getElementById("sponsors");
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 function renderSponsors(sponsors) {
   if (!sponsorsEl) return;
@@ -41,18 +40,6 @@ async function checkHealth() {
 }
 
 // Poll a generation job until it finishes; onTick(current,total,label) for UI.
-async function pollJob(jobId, onTick) {
-  while (true) {
-    await sleep(1500);
-    const r = await fetch(`/api/job/${jobId}`);
-    if (!r.ok) throw new Error("Lost track of the job.");
-    const job = await r.json();
-    if (onTick) onTick(job.current, job.total, job.label);
-    if (job.status === "done") return job;
-    if (job.status === "error") throw new Error(job.error || "Generation failed");
-  }
-}
-
 /* ========================== NAVIGATION ======================= */
 // The sidebar lists projects; the main area shows the selected project's studio.
 const listingsPanel = document.getElementById("tab-listings");
@@ -184,13 +171,6 @@ const INCLUDE_OPTIONS = [
   { key: "price", icon: "💰", label: "Nightly price" },
 ];
 const PHOTO_LIMIT = 5; // show this many, then a "+N more" tile
-
-// Social delivery formats the agent can render to (key matches config.FORMAT_PRESETS).
-const FORMATS = [
-  { key: "reel", icon: "📸", label: "Instagram Reel", ratio: "9:16" },
-  { key: "tiktok", icon: "🎵", label: "TikTok", ratio: "9:16" },
-];
-const DEFAULT_FORMAT = "reel";
 
 let currentDetail = null;
 let showAllPhotos = false;
@@ -540,19 +520,6 @@ function renderMarkdown(md) {
 }
 
 // ---- Agent Loop activity feed ----
-// Map a backend progress label to a feed action (icon + human line).
-function actionFor(label) {
-  const l = (label || "").toLowerCase();
-  if (l.includes("research") || l.includes("neighbor") || l.includes("scout")) return ["🔎", "Researching the neighborhood via Tavily"];
-  if (l.includes("curat") || l.includes("best") || l.includes("plan")) return ["🖼️", "Curating the strongest shots with GPT-4o"];
-  if (l.includes("film")) return ["🎬", "Filming scenes with NVIDIA Cosmos 3"];
-  if (l.includes("map") || l.includes("price") || l.includes("rating") || l.includes("detail") || l.includes("card")) return ["🗺️", "Designing maps & info cards"];
-  if (l.includes("stitch") || l.includes("concat")) return ["🎞️", "Stitching & color-grading the cut"];
-  if (l.includes("scor") || l.includes("narrat")) return ["🔊", "Scoring & narrating with OpenAI"];
-  if (l.includes("wrap") || l.includes("done")) return ["✅", "Wrapping up"];
-  return ["⚙️", label || "Working…"];
-}
-
 function feedOutputItem(v, isLatest) {
   return `<div class="feed-item output">
     <span class="fi-rail"><span class="fi-dot">🎬</span></span>
@@ -604,7 +571,6 @@ function renderStudio(d) {
   const brandInfo = dossier.brand || {};
   const brief = dossier.brief || {};
   const activity = dossier.activity || [];
-  const briefFmt = brief.format || DEFAULT_FORMAT;
   const feedHtml = buildAgentFeed(activity, d.versions);
   const briefAssets = (brief.assets || [])
     .map((a) => {
@@ -626,7 +592,6 @@ function renderStudio(d) {
         <button class="proj-tab active" data-tab="soul">🪶 Soul</button>
         <button class="proj-tab" data-tab="assets">🖼️ Images &amp; Videos</button>
         <button class="proj-tab" data-tab="memory">🧠 Memory</button>
-        <button class="proj-tab" data-tab="human">🎛️ Human Drive</button>
         <button class="proj-tab" data-tab="agent">🤖 Agent Loop${genCount ? ` <span class="tab-badge">${genCount}</span>` : ""}</button>
       </div>
     </div>
@@ -662,7 +627,7 @@ function renderStudio(d) {
         <div class="card-h"><h2>🧠 Marketing manager</h2><span class="muted small">OpenClaw-style · GPT-4o</span></div>
         ${brandInfo.oneliner
           ? `<p class="mgr-oneliner">“${escapeHtml(brandInfo.oneliner)}”</p>`
-          : `<p class="muted">No brand yet. Run the marketing manager — it'll research the venue, invent the missing brand facts (kept consistent across videos), and draft a creative brief.</p>`}
+          : `<p class="muted">No brand yet. Run the marketing manager from the CLI — <code>python -m app.agent run ${d.id}</code> — and it'll research the venue, invent the missing brand facts (kept consistent across videos), and draft a creative brief here.</p>`}
         <div class="mgr-meta">
           ${brandInfo.audience ? `<span class="vstat">🎯 ${escapeHtml(brandInfo.audience)}</span>` : ""}
           ${brandInfo.tone ? `<span class="vstat">🎨 ${escapeHtml(brandInfo.tone)}</span>` : ""}
@@ -682,36 +647,7 @@ function renderStudio(d) {
           ${brief.voice ? `<span class="vstat">🎙 ${escapeHtml(brief.voice)}</span>` : ""}
           ${brief.format ? `<span class="vstat">🎞 ${escapeHtml(brief.format)}</span>` : ""}
         </div>
-        <button class="btn btn-ghost run-agent-btn">🤖 Run marketing manager</button>
-      </section>
-    </div>
-
-    <!-- ============ TAB: HUMAN DRIVE (you brief + fire the cut) ============ -->
-    <div class="proj-panel" data-panel="human" hidden>
-      <p class="panel-intro muted">Take the wheel: pick a format, add an optional director note, and fire the cut yourself. It's grounded on the brand Memory — progress streams into the Agent Loop.</p>
-
-      <section class="card brief-card">
-        <label class="cfg-label">Format</label>
-        <div class="fmt-grid">
-          ${FORMATS.map((f) => `
-            <button class="fmt-chip ${f.key === briefFmt ? "active" : ""}" data-fmt="${f.key}">
-              <span class="fmt-ic">${f.icon}</span>
-              <span class="fmt-l">${f.label}</span>
-              <span class="fmt-r">${f.ratio}</span>
-            </button>`).join("")}
-        </div>
-        <div class="brief-row">
-          <textarea class="agent-prompt" rows="2"
-            placeholder="Add a director note for this cut (optional) — the brand brief is applied automatically."></textarea>
-          <button class="btn regen-btn">
-            <span class="rb-main">✨ Generate</span>
-            <span class="rb-sub">NVIDIA Cosmos 3 · H200</span>
-          </button>
-        </div>
-        <label class="tavily-opt">
-          <input type="checkbox" class="f-tavily" checked />
-          <span>Allow using Tavily search to research the brand &amp; audience</span>
-        </label>
+        <p class="muted small mgr-cli">Driven from the CLI — <code>python -m app.agent run ${d.id}</code> refreshes this brief; <code>python -m app.agent generate ${d.id}</code> films a cut.</p>
       </section>
     </div>
 
@@ -723,7 +659,7 @@ function renderStudio(d) {
         <div class="card-h"><h2>Agent activity</h2></div>
         <div class="agent-feed">${feedHtml}</div>
         <p class="muted empty-note feed-empty" ${genCount ? "hidden" : ""}>
-          Idle — run the marketing manager or drive a cut yourself, and it'll start working here.
+          Idle — start the loop from the CLI (<code>python -m app.agent generate ${d.id}</code> or <code>scripts/marketing_loop.py</code>) and its work streams here.
         </p>
       </section>
     </div>
@@ -834,124 +770,6 @@ function renderStudio(d) {
     wireFeedbackButtons(root);
   };
   wireCards(detailEl);
-
-  // ---- Agent Loop: brief + live activity feed ----
-  const feed = detailEl.querySelector(".agent-feed");
-  const feedEmpty = detailEl.querySelector(".feed-empty");
-  const regenBtn = detailEl.querySelector(".regen-btn");
-
-  // Format selector (single-select); defaults to the brief's recommended format.
-  let selectedFmt = briefFmt;
-  detailEl.querySelectorAll(".fmt-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      detailEl.querySelectorAll(".fmt-chip").forEach((b) => b.classList.toggle("active", b === btn));
-      selectedFmt = btn.dataset.fmt;
-    });
-  });
-
-  function markRunningDone() {
-    feed.querySelectorAll(".feed-item.action.running").forEach((el) => {
-      el.classList.remove("running");
-      el.classList.add("done");
-    });
-  }
-  let lastActionText = "";
-  function addAction(icon, text) {
-    if (text === lastActionText) return;
-    lastActionText = text;
-    markRunningDone();
-    const item = document.createElement("div");
-    item.className = "feed-item action running";
-    item.innerHTML = `<span class="fi-rail"><span class="fi-dot">${icon}</span></span>
-      <div class="fi-body"><div class="fi-line"><span class="fi-ts">just now</span>
-      <b>${escapeHtml(text)}</b></div></div>`;
-    feed.prepend(item);
-    if (feedEmpty) feedEmpty.hidden = true;
-  }
-
-  // ---- Run the marketing manager (research -> brand -> brief) ----
-  const runAgentBtn = detailEl.querySelector(".run-agent-btn");
-  if (runAgentBtn) {
-    runAgentBtn.addEventListener("click", async () => {
-      runAgentBtn.disabled = true;
-      regenBtn.disabled = true;
-      lastActionText = "";
-      // Jump to the loop so the research → brand → brief steps stream live.
-      detailEl.querySelector('.proj-tab[data-tab="agent"]')?.click();
-      addAction("🤖", "Marketing manager starting…");
-      try {
-        const form = new FormData();
-        form.append("fmt", selectedFmt);
-        const r = await fetch(`/api/listings/${d.id}/agent/run`, { method: "POST", body: form });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.detail || "Agent run failed");
-        await pollJob(data.job_id, (_c, _t, label) => {
-          const m = (label || "").match(/^(\S+)\s+([\s\S]*)$/);
-          if (m) addAction(m[1], m[2]);
-          else addAction("⚙️", label || "Working…");
-        });
-        markRunningDone();
-        // Re-render from the updated dossier, then reveal the fresh brief in Memory.
-        await openListingStudio(d.id);
-        detailEl.querySelector('.proj-tab[data-tab="memory"]')?.click();
-      } catch (err) {
-        addAction("⚠️", "Marketing manager failed: " + err.message);
-        markRunningDone();
-        runAgentBtn.disabled = false;
-        regenBtn.disabled = false;
-      }
-    });
-  }
-
-  regenBtn.addEventListener("click", async () => {
-    // Brief = the Soul document + the agent prompt for this specific cut.
-    const soulText = (detailEl.querySelector(".md-doc")?.innerText || "").trim();
-    const prompt = (detailEl.querySelector(".agent-prompt")?.value || "").trim();
-    const instructions = [soulText, prompt && `Director note for this cut: ${prompt}`]
-      .filter(Boolean)
-      .join("\n\n");
-
-    const fmtLabel = (FORMATS.find((f) => f.key === selectedFmt) || {}).label || selectedFmt;
-    regenBtn.disabled = true;
-    lastActionText = "";
-    // Jump to the loop so generation progress streams live.
-    detailEl.querySelector('.proj-tab[data-tab="agent"]')?.click();
-    addAction("🧠", `Reading the Soul · targeting ${fmtLabel}`);
-    try {
-      const form = new FormData();
-      form.append("instructions", instructions);
-      form.append("price", det.price || "");
-      form.append("fmt", selectedFmt);
-      const r = await fetch(`/api/listings/${d.id}/generate`, { method: "POST", body: form });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || "Generation failed");
-      await pollJob(data.job_id, (c, t, label) => {
-        const [icon, text] = actionFor(label);
-        addAction(icon, t > 0 && label && label.toLowerCase().includes("film")
-          ? `Filming scene ${Math.min(c + 1, t)} of ${t} with NVIDIA Cosmos 3`
-          : text);
-      });
-      markRunningDone();
-      // Pull the fresh version and publish it at the top of the loop.
-      const fresh = await (await fetch(`/api/listings/${d.id}`)).json();
-      currentDetail = fresh;
-      const v = (fresh.versions || [])[0];
-      if (v) {
-        const wrap = document.createElement("div");
-        wrap.innerHTML = feedOutputItem(v, true);
-        const node = wrap.firstElementChild;
-        feed.prepend(node);
-        wireCards(node);
-      }
-      const badge = detailEl.querySelector('.proj-tab[data-tab="agent"]');
-      if (badge) badge.innerHTML = `🤖 Agent Loop <span class="tab-badge">${(fresh.versions || []).length}</span>`;
-    } catch (err) {
-      addAction("⚠️", "Generation failed: " + err.message);
-      markRunningDone();
-    } finally {
-      regenBtn.disabled = false;
-    }
-  });
 }
 
 async function openListingStudio(id) {

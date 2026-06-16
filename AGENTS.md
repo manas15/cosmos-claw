@@ -40,8 +40,9 @@ plug-in). Architecture follows planner / doer / checker ("loops and goals").
 - `app/curation.py` — scores best-of-N takes (motion energy + smoothness) → `pick_best`.
 - `app/agent.py` — terminal CLI: `run`, `assume`, `generate`, `goal`, `feedback`.
 - `app/main.py` — FastAPI app + routes (generate, versions, goals, feedback decision/perf).
-- `app/static/` — UI (Soul / Images & Videos / Memory / Human Drive / Agent Loop tabs +
-  north-star header + per-cut feedback block).
+- `app/static/` — read-only studio UI (Soul / Images & Videos / Memory / Agent Loop tabs +
+  north-star header + per-cut feedback block). Creation is CLI-only; the UI just views
+  the loop and posts/discards cuts.
 - `scripts/marketing_loop.py` — the always-on driver: study → ideate → film → publish →
   learn, `--until-goals` stop, per-cut hygiene (compact + prune + weekly reflect).
 - `scripts/cosmos_montage.py` — thin terminal wrapper around `videographer.make_reel`.
