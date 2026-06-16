@@ -52,10 +52,12 @@ own video model, and find out.
 > figure out what to do. My job is to write loops."*
 > — **Boris Cherny**, Head of Claude Code at Anthropic ([source](https://cobusgreyling.substack.com/p/loop-engineering))
 
-That's the bet Cosmos Claw is built on. You don't write the prompts — you write
-the loop and hand it a goal, then let it burn tokens around the clock until that
-goal is met. The leverage isn't a cleaner prompt; it's a system that keeps
-researching, filming, posting, and learning while you sleep.
+That's the bet Cosmos Claw makes for social media. We don't prompt a model for
+"a good reel" — we hand two agents a north-star (10k followers, 1M views) and let
+them burn tokens around the clock: researching the brand, filming POV reels,
+posting, reading what landed, and adjusting the next campaign. One perfect prompt
+gives you one video; a loop gives you a content engine that gets less sloppy the
+longer it runs, because every post and every view it earns feeds the next idea.
 
 ---
 
