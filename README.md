@@ -17,9 +17,18 @@ long as it takes to hit the goal.**
 
 ▶️ **[Watch the 60s demo](https://x.com/i/status/2065370878519468221)**
 
-[![Watch the demo](assets/demo-poster.jpg)](https://x.com/i/status/2065370878519468221)
-
 </div>
+
+---
+
+## The pitch
+
+CosmosClaw is a videography skill used by a social media marketing agent that
+runs 24/7 to generate Instagram Reels and TikToks. Underneath the skill is a
+self-hosted endpoint of NVIDIA's Cosmos model, which lets us create videos of
+digital realities grounded in real photos. It's a loop: Research → Ideate →
+Generate Reel → Post → Research. The longer it runs, the better its outputs get
+— AI slop starts reducing significantly after 10+ generations.
 
 ---
 
