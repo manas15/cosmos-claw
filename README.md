@@ -48,9 +48,14 @@ own video model, and find out.
 
 ## How the loop works
 
-The design is a **planner / doer / checker** loop (Boris Cherny's "loops and
-goals"): a long-lived agent system isn't one prompt, it's a cycle that makes
-measurable progress toward a goal and corrects itself with real feedback.
+> *"I don't prompt Claude anymore. I have loops running that prompt Claude and
+> figure out what to do. My job is to write loops."*
+> — **Boris Cherny**, Head of Claude Code at Anthropic ([source](https://cobusgreyling.substack.com/p/loop-engineering))
+
+That's the bet Cosmos Claw is built on. The design is a **planner / doer /
+checker** loop: a long-lived agent system isn't one prompt, it's a cycle that
+makes measurable progress toward a goal and corrects itself with real feedback.
+You don't write the prompts — you write the loop and hand it a goal.
 
 ```mermaid
 flowchart LR
