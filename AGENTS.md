@@ -5,32 +5,47 @@ we (human + agent) stay organized. Not user-facing docs — see `README.md` for 
 
 ## What this is
 
-**Cosmos Claw** — "Your Always-On AI-native Videographer." Turns a venue's photos
-(Airbnb listing, café, bar, etc.) into cinematic, scroll-stopping social videos.
-GPT-4o directs; **NVIDIA Cosmos 3 Nano** (self-hosted, vLLM-Omni) generates the
-motion; ffmpeg stitches with fast transitions, music, and voiceover.
+**Cosmos Claw** — "Your Always-On AI-native Videographer." An *experiment*: two
+agents (a marketing manager + a videographer) that run locally 24/7, for months,
+chasing north-star goals (followers / views / community) and getting less sloppy
+over time via a human feedback loop. **Use-case agnostic** (any venue/brand, not
+just rentals) and **model agnostic** (Cosmos 3 by default, any `ClipGenerator`
+plug-in). Architecture follows planner / doer / checker ("loops and goals").
 
 ## Architecture (key modules)
 
-- `app/config.py` — central config (Cosmos params, motion/best-of-N knobs, prompts).
-- `app/trailer.py` — GPT-4o vision storyboard "director": shot vocabulary, per-beat
-  `shot`/`motion_strength`/`ambient`, walkthrough (first-person POV) mode.
-- `app/generation/` — clip backends:
-  - `base.py` — `Scene` dataclass + `ClipGenerator` ABC (`generate_clip(scene,out,variant)`).
+- `app/config.py` — central config (Cosmos params, motion/best-of-N knobs, prompts,
+  pluggable `VIDEO_*` backend, durability caps: `ACTIVITY_CAP`/`VERSION_RETENTION`/
+  `REFLECT_EVERY`).
+- **Planner** — `app/marketing_agent.py` + `app/brand.py`: GPT-4o manager. Persistent
+  brand dossier (memory, durable assumptions, lessons, chronicle, posts), research,
+  goal-driven briefs. Use-case agnostic (free-form facts + `use_case`; hashtags/CTA
+  derived from the dossier).
+- **Doer** — `app/videographer.py`: `make_reel()` is the canonical skill (auto frame
+  count → best-of-N film → cut → voice → publish version). `app/vision.py` does the
+  GPT-4o photo analysis (labels + per-shot prompts). `app/transitions.py` +
+  `app/audio.py` for xfade montage + TTS voiceover/mood music.
+- **Checker** — `app/feedback.py`: `record_decision` (post/discard), `record_performance`,
+  `pending/due_reviews`, `what_performed`/`slop_to_avoid`, `derive_lessons` (GPT-4o).
+- **Goals** — `app/goals.py`: targets/progress, `ingest_performance`, `all_met`, and
+  `gap_hint` (biggest gap → the next ideation focus).
+- `app/generation/` — pluggable clip backends:
+  - `base.py` — `Scene` dataclass + `ClipGenerator` ABC (`generate_clip` + `available`/`live`).
   - `cosmos.py` — live Cosmos 3 via vLLM-Omni (`/v1/videos/sync`); seed/flow_shift per take.
+  - `openai_video.py` — generic OpenAI-compatible img→video server (`VIDEO_*`).
+  - `providers/` — optional hosted/open adapters (runway, luma, kling, veo, pika, ltx,
+    wan, svd) with lazy SDK imports + a shared `_common.py`.
   - `stub.py` — local ffmpeg fallback (zoompan motion), no GPU needed.
-  - `factory.py` — picks backend from `LIVEHERE_BACKEND` / `--backend`.
+  - `factory.py` — `BACKENDS` registry + dotted-path "bring your own model" loader.
 - `app/curation.py` — scores best-of-N takes (motion energy + smoothness) → `pick_best`.
-- `app/transitions.py` — `xfade_montage`: fast, varied cross-transitions between clips.
-- `app/pipeline.py` — orchestrates plan → best-of-N render → curate → stitch + manifest.
-- `app/marketing_agent.py` + `app/brand.py` — OpenClaw-style marketing manager:
-  persistent brand dossier, research, briefs (assets/order/music/voice/format), posts.
-- `app/agent.py` — terminal CLI to drive the agent manually.
-- `app/main.py` — FastAPI app + routes (generate, versions, re-stitch).
-- `app/static/` — UI (Soul / Images & Videos / Memory / Human Drive / Agent Loop tabs).
-- `scripts/cosmos_montage.py` — terminal montage: GPT-4o vision per photo → Cosmos
-  short clips → fast transitions + music. The main path we're running live now.
-- `scripts/test_realism.py` — Cosmos param sweep → labeled ffmpeg contact sheet.
+- `app/agent.py` — terminal CLI: `run`, `assume`, `generate`, `goal`, `feedback`.
+- `app/main.py` — FastAPI app + routes (generate, versions, goals, feedback decision/perf).
+- `app/static/` — UI (Soul / Images & Videos / Memory / Human Drive / Agent Loop tabs +
+  north-star header + per-cut feedback block).
+- `scripts/marketing_loop.py` — the always-on driver: study → ideate → film → publish →
+  learn, `--until-goals` stop, per-cut hygiene (compact + prune + weekly reflect).
+- `scripts/cosmos_montage.py` — thin terminal wrapper around `videographer.make_reel`.
+- `deploy/run_local.sh` + `com.cosmosclaw.loop.plist` + `cosmosclaw.service` — 24/7 daemon.
 
 ## Backend / infra status
 
@@ -47,6 +62,28 @@ motion; ffmpeg stitches with fast transitions, music, and voiceover.
 - Secrets (`OPENAI_API_KEY`, NVIDIA key) live in `.env` only — gitignored.
 
 ## Worklog
+
+### 2026-06-15 (the experiment: loops, goals, feedback, pluggable model)
+- Reframed the product as an experiment — two agents running 24/7 for months toward
+  north-star goals, improving via a feedback loop. Implemented planner/doer/checker:
+  - **Doer**: extracted `app/videographer.py` (`make_reel`) + `app/vision.py` from the
+    old trailer/director/pipeline cluster; deleted `trailer.py`, `director.py`,
+    `pipeline.py`, `storyboard.py`, `decorate.py`, `text_overlay.py`, `infocards.py`,
+    `assembly.py` and the obsolete seed/test scripts.
+  - **Checker**: new `app/feedback.py` (post/discard + performance → `derive_lessons`),
+    wired into the loop, the CLI (`feedback` subcommands), and the UI (per-cut block).
+  - **Goals**: new `app/goals.py` (north-star targets, progress, `gap_hint`); steers
+    ideation, adds `--until-goals` stop, CLI (`goal`), API, and a north-star UI header.
+- **Pluggable model**: `factory.py` is now a registry + dotted-path loader; added a
+  generic `openai_video` adapter + optional provider adapters (runway/luma/kling/veo/
+  pika/ltx/wan/svd) with lazy SDK imports; `base.ClipGenerator` gained a `live()` probe.
+- **Use-case agnostic**: dropped the rental `_FACT_KEYS` schema for free-form facts +
+  `use_case`; hashtags/CTA/handle/grounding now derive from the dossier.
+- **Long-horizon durability**: atomic dossier writes, activity/research compaction into
+  a bounded chronicle, disk retention (`prune_versions`, never deletes posted cuts), and
+  a weekly `reflect()`; plus a 24/7 `deploy/run_local.sh` + launchd/systemd supervisors.
+- **Repo hygiene**: re-authored 5 commits + stripped `Co-authored-by: Cursor` trailers;
+  downscaled screenshots to JPG.
 
 ### 2026-06-14
 - Brought a stopped Nebius H200 VM back online; fresh disk (no image/weights), so

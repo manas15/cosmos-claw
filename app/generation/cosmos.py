@@ -43,6 +43,20 @@ class CosmosClipGenerator(ClipGenerator):
             return False, "COSMOS_API_KEY not set"
         return True, f"configured ({self.style} @ {config.COSMOS_BASE_URL})"
 
+    def live(self, timeout: float = 8.0) -> bool:
+        """Real liveness probe (GET {base}/models) — catches a dropped SSH tunnel
+        that the config-only ``available()`` cannot see."""
+        ok, _ = self.available()
+        if not ok:
+            return False
+        url = config.COSMOS_BASE_URL.rstrip("/") + "/models"
+        try:
+            with requests.Session() as s:
+                r = s.get(url, timeout=timeout)
+            return 200 <= r.status_code < 300
+        except Exception:  # noqa: BLE001
+            return False
+
     def generate_clip(self, scene: Scene, out_path: str, variant: int = 0) -> str:
         if not scene.source_path:
             raise ValueError("CosmosClipGenerator requires a source image/video for the scene")

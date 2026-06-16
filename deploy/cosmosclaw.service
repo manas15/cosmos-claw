@@ -1,0 +1,28 @@
+# systemd unit for the always-on videographer loop (Linux).
+#
+#   sudo cp deploy/cosmosclaw.service /etc/systemd/system/
+#   # edit User= and the two paths below to match your box
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cosmosclaw
+#   journalctl -u cosmosclaw -f
+#
+# Restart=always means the loop comes back after a crash or reboot; all state
+# is on disk, so it resumes toward the goals automatically.
+
+[Unit]
+Description=Cosmos Claw always-on AI videographer loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cosmosclaw
+WorkingDirectory=/opt/cosmosclaw/LiveHere
+ExecStart=/bin/bash /opt/cosmosclaw/LiveHere/deploy/run_local.sh
+Restart=always
+RestartSec=30
+# Keep going across logout / reboots.
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

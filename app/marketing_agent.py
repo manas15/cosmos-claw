@@ -100,14 +100,14 @@ def _tavily_search(query: str, max_results: int = 4) -> list[dict]:
 def _fabricate_research(location: str, facts: dict) -> list[dict]:
     """No-key fallback: GPT-4o invents plausible neighborhood/market context."""
     system = (
-        "You are a marketing researcher. Invent PLAUSIBLE, specific local context "
-        "for a short-term rental's marketing (nearby attractions, dining, transit, "
-        "the kind of traveler who books here, and one competitive angle). It's fine "
+        "You are a marketing researcher. Invent PLAUSIBLE, specific local/market "
+        "context for THIS brand's marketing (its audience, who it's for, nearby or "
+        "relevant context, and one competitive angle) given its use-case. It's fine "
         "to make things up, but keep them realistic and self-consistent. Return "
         'STRICT JSON: {"findings": [{"query": "...", "source": "assumed", '
         '"snippet": "...", "kind": "assumed"}]} with 4-6 findings.'
     )
-    user = f"Location: {location or 'a desirable city neighborhood'}\nKnown facts: {json.dumps(facts)[:1500]}"
+    user = f"Location: {location or 'a desirable area'}\nKnown facts: {json.dumps(facts)[:1500]}"
     data = _gpt_json(system, user, max_tokens=900, temperature=0.8)
     out = []
     for f in data.get("findings", [])[:6]:
@@ -164,16 +164,20 @@ def build_brand(listing: listings.Listing, on_step: StepFn = _noop) -> dict:
     research = dossier.get("research", [])
 
     on_step("🧠", "Defining the brand positioning")
+    use_case = dossier.get("use_case") or "this brand"
     system = (
-        "You are a senior brand/marketing manager for short-term rentals. From the "
-        "facts and research, define a crisp brand and FILL IN any missing facts with "
+        "You are a senior brand/marketing manager who can position ANY local "
+        f"business, venue, product, or creator (here: {use_case}). From the facts "
+        "and research, define a crisp brand and FILL IN any missing facts with "
         "plausible, self-consistent assumptions (it's fine to make things up for the "
-        "demo, but keep them realistic). Choose a TTS voice from "
-        f"{list(_VOICES)} and a music mood from {list(_MOODS)}. "
+        "demo, but keep them realistic). Also write a short call-to-action that fits "
+        "the use-case (e.g. 'Book now', 'Visit us', 'Shop the drop', 'Follow along'). "
+        f"Choose a TTS voice from {list(_VOICES)} and a music mood from {list(_MOODS)}. "
         'Return STRICT JSON: {"oneliner": "...", "audience": "...", "tone": "...", '
-        '"voice": "nova", "music": "warm", "selling_points": ["...", "..."], '
-        '"assumptions": [{"field": "price", "value": "$245 / night"}, '
-        '{"field": "neighborhood_highlight", "value": "..."}]}. '
+        '"voice": "nova", "music": "warm", "cta": "...", '
+        '"selling_points": ["...", "..."], '
+        '"assumptions": [{"field": "price", "value": "..."}, '
+        '{"field": "highlight", "value": "..."}]}. '
         "Only include assumptions for facts that are currently missing/empty."
     )
     user = (
@@ -193,6 +197,8 @@ def build_brand(listing: listings.Listing, on_step: StepFn = _noop) -> dict:
         b["voice"] = str(data["voice"]).lower()
     if str(data.get("music", "")).lower() in _MOODS:
         b["music"] = str(data["music"]).lower()
+    if str(data.get("cta", "")).strip():
+        b["cta"] = str(data["cta"]).strip()[:60]
     sp = [str(s).strip() for s in (data.get("selling_points") or []) if str(s).strip()]
     if sp:
         b["selling_points"] = sp[:6]
@@ -221,7 +227,7 @@ def build_brand(listing: listings.Listing, on_step: StepFn = _noop) -> dict:
 
 def _encode_photos(listing: listings.Listing, limit: int = 12) -> list[tuple[int, str]]:
     """Base64 data URIs for up to ``limit`` photos (uses cached JPEG thumbs)."""
-    from .director import _encode_image
+    from .vision import encode_image as _encode_image
 
     work = config.OUTPUT_DIR / "agent_work"
     work.mkdir(parents=True, exist_ok=True)

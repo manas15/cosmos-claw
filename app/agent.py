@@ -153,12 +153,84 @@ def cmd_run(args) -> None:
         cmd_generate(args)
 
 
+def cmd_feedback(args) -> None:
+    """The Checker, from the terminal: post/discard a cut or log how it did."""
+    listing = _resolve(args.listing)
+    from . import feedback
+
+    if args.action == "reviews":
+        pending = feedback.pending_reviews(listing.id)
+        due = feedback.due_reviews(listing.id)
+        print(f"{len(pending)} awaiting decision, {len(due)} performance check-ins due\n")
+        for v in pending:
+            print(f"  pending  v{v['vid']}  “{v['meta'].get('title') or ''}”")
+        for v in due:
+            print(f"  due      v{v['vid']}  “{v['meta'].get('title') or ''}” — log performance")
+        return
+    if args.action == "lessons":
+        for lesson in feedback.derive_lessons(listing.id):
+            print(f"  • {lesson}")
+        return
+    if not args.vid:
+        sys.exit(f"Usage: feedback {args.action} <listing> <vid> [...]")
+    if args.action == "post":
+        feedback.record_decision(listing.id, args.vid, "posted")
+        print(f"Posted v{args.vid} — performance check-in scheduled in 7 days.")
+        return
+    if args.action == "discard":
+        feedback.record_decision(listing.id, args.vid, "discarded", slop_notes=args.note)
+        print(f"Discarded v{args.vid} as slop. Lesson recorded.")
+        return
+    if args.action == "perf":
+        metrics: dict = {}
+        for kv in args.metric or []:
+            if "=" in kv:
+                k, v = kv.split("=", 1)
+                metrics[k.strip()] = v.strip()
+        for name in ("views", "likes", "comments", "shares", "followers"):
+            val = getattr(args, name, None)
+            if val is not None:
+                metrics[name] = val
+        if not metrics:
+            sys.exit("Provide metrics, e.g. --views 1200 --likes 80 or --metric saves=15")
+        feedback.record_performance(listing.id, args.vid, metrics)
+        print(f"Logged performance for v{args.vid}: {metrics}")
+        return
+
+
+def cmd_goal(args) -> None:
+    """Inspect / set the north-star goals the agents chase."""
+    listing = _resolve(args.listing)
+    from . import goals
+
+    if args.action == "show":
+        for g in goals.progress(listing.id):
+            bar = "█" * int(g["pct"] / 10) + "░" * (10 - int(g["pct"] / 10))
+            mark = " ✓" if g["met"] else ""
+            print(f"  {g['id']:14} {bar} {g['pct']:5.1f}%  {int(g['current'])}/{int(g['target'])}  {g['label']}{mark}")
+        return
+    if not args.goal_id:
+        sys.exit("Usage: goal set|current <listing> <goal_id> --target/--value N")
+    if args.action == "set":
+        if args.target is None:
+            sys.exit("Provide --target N")
+        goals.set_target(listing.id, args.goal_id, args.target)
+        print(f"Set target for {args.goal_id} = {args.target}")
+        return
+    if args.action == "current":
+        if args.value is None:
+            sys.exit("Provide --value N")
+        goals.set_current(listing.id, args.goal_id, args.value)
+        print(f"Set current for {args.goal_id} = {args.value}")
+        return
+
+
 def cmd_generate(args) -> None:
     listing = _resolve(args.listing)
     base = args.server.rstrip("/")
     # Reuse the live, dossier-grounded generation path.
     body = urllib.parse.urlencode(
-        {"instructions": args.note or "", "price": "", "include": args.include or "", "fmt": args.format}
+        {"instructions": args.note or "", "price": "", "fmt": args.format}
     ).encode()
     req = urllib.request.Request(
         f"{base}/api/listings/{listing.id}/generate", data=body, method="POST"
@@ -244,8 +316,28 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("listing")
     g.add_argument("--format", default=config.DEFAULT_FORMAT)
     g.add_argument("--note", default="", help="Extra director note for this cut")
-    g.add_argument("--include", default="", help="Comma-separated include keys (blank = all)")
     g.set_defaults(func=cmd_generate)
+
+    gl = sub.add_parser("goal", help="Inspect/set the north-star goals (followers, views, community)")
+    gl.add_argument("action", choices=["show", "set", "current"])
+    gl.add_argument("listing")
+    gl.add_argument("goal_id", nargs="?", help="e.g. ig_followers, tt_views, community")
+    gl.add_argument("--target", type=float, default=None)
+    gl.add_argument("--value", type=float, default=None, help="current progress value")
+    gl.set_defaults(func=cmd_goal)
+
+    fb = sub.add_parser("feedback", help="Post/discard a cut or log how it performed (the Checker)")
+    fb.add_argument("action", choices=["post", "discard", "perf", "reviews", "lessons"])
+    fb.add_argument("listing")
+    fb.add_argument("vid", nargs="?", help="version id (not needed for reviews/lessons)")
+    fb.add_argument("--note", default="", help="why it's slop (for discard)")
+    fb.add_argument("--views", type=float, default=None)
+    fb.add_argument("--likes", type=float, default=None)
+    fb.add_argument("--comments", type=float, default=None)
+    fb.add_argument("--shares", type=float, default=None)
+    fb.add_argument("--followers", type=float, default=None, help="followers gained")
+    fb.add_argument("--metric", action="append", help="extra metric key=value (repeatable)")
+    fb.set_defaults(func=cmd_feedback)
 
     return p
 

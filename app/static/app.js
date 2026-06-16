@@ -189,10 +189,6 @@ const PHOTO_LIMIT = 5; // show this many, then a "+N more" tile
 const FORMATS = [
   { key: "reel", icon: "📸", label: "Instagram Reel", ratio: "9:16" },
   { key: "tiktok", icon: "🎵", label: "TikTok", ratio: "9:16" },
-  { key: "shorts", icon: "▶️", label: "YouTube Shorts", ratio: "9:16" },
-  { key: "story", icon: "🟣", label: "Instagram Story", ratio: "9:16" },
-  { key: "snap", icon: "👻", label: "Snapchat Story", ratio: "9:16" },
-  { key: "youtube", icon: "📺", label: "YouTube", ratio: "16:9" },
 ];
 const DEFAULT_FORMAT = "reel";
 
@@ -237,6 +233,66 @@ function highlightHashtags(escaped) {
   return escaped.replace(/(#[A-Za-z0-9_]+)/g, '<span class="hash">$1</span>');
 }
 
+// North-star goals header: the big targets the agents chase for months.
+function northStar(goalList) {
+  if (!goalList || !goalList.length) return "";
+  const bars = goalList
+    .map((g) => {
+      const pct = Math.max(0, Math.min(100, g.pct || 0));
+      const cur = Math.round(g.current || 0).toLocaleString();
+      const tgt = Math.round(g.target || 0).toLocaleString();
+      return `<div class="ns-goal ${g.met ? "met" : ""}">
+        <div class="ns-top"><span class="ns-label">${escapeHtml(g.label || g.id)}${g.met ? " 🏆" : ""}</span>
+          <span class="ns-num">${cur} / ${tgt}</span></div>
+        <div class="ns-track"><span class="ns-fill" style="width:${pct}%"></span></div>
+      </div>`;
+    })
+    .join("");
+  return `<div class="north-star">
+    <div class="ns-h">🎯 North-star goals <span class="muted">— the experiment runs until these are met</span></div>
+    <div class="ns-goals">${bars}</div>
+  </div>`;
+}
+
+// The Checker UI: every cut starts pending; the human posts it or flags slop,
+// then later logs how it did. State drives what's shown.
+function feedbackBlock(v) {
+  const status = v.status || "pending_review";
+  if (status === "discarded") {
+    const why = v.slop_notes ? ` — ${escapeHtml(v.slop_notes)}` : "";
+    return `<div class="pc-feedback discarded"><span class="fb-state">🗑 Discarded as slop${why}</span></div>`;
+  }
+  if (status === "posted") {
+    const perf = v.performance;
+    if (perf && Object.keys(perf).length) {
+      const chips = Object.entries(perf)
+        .map(([k, val]) => `<span class="vstat">${escapeHtml(k)}: ${Math.round(val)}</span>`)
+        .join("");
+      return `<div class="pc-feedback posted"><span class="fb-state">📮 Posted</span><div class="vstats">${chips}</div></div>`;
+    }
+    return `<div class="pc-feedback posted">
+        <span class="fb-state">📮 Posted — how did it do?</span>
+        <div class="fb-perf">
+          <input class="fb-views" type="number" min="0" placeholder="views" />
+          <input class="fb-likes" type="number" min="0" placeholder="likes" />
+          <input class="fb-followers" type="number" min="0" placeholder="+followers" />
+          <button class="btn btn-sm fb-log">Log</button>
+        </div>
+        <span class="fb-status"></span>
+      </div>`;
+  }
+  // pending_review
+  return `<div class="pc-feedback pending">
+      <span class="fb-state">⏳ Awaiting your call</span>
+      <div class="fb-decide">
+        <button class="btn btn-sm fb-post">📮 Post it</button>
+        <button class="btn btn-ghost btn-sm fb-discard">🗑 Slop</button>
+      </div>
+      <input class="fb-note" type="text" placeholder="why is it slop? (optional, teaches the agent)" hidden />
+      <span class="fb-status"></span>
+    </div>`;
+}
+
 // A ready-to-post social card: format-shaped preview + caption + actions.
 function versionItem(v, isLatest) {
   const ar = (v.ratio || "9:16").replace(":", " / ");
@@ -244,14 +300,13 @@ function versionItem(v, isLatest) {
   const caption = postCaption(v);
   const stats = [
     v.scene_count ? `${v.scene_count} scenes` : "",
-    v.info_card_count ? `${v.info_card_count} info cards` : "",
     v.voice ? `🎙 ${v.voice}` : "",
   ]
     .filter(Boolean)
     .map((s) => `<span class="vstat">${escapeHtml(s)}</span>`)
     .join("");
   return `
-    <div class="postcard">
+    <div class="postcard" data-vid="${v.vid}">
       <div class="pc-media" style="aspect-ratio:${ar}">
         <button class="version-video" data-src="${v.video_url}" ${v.poster ? `data-poster="${v.poster}"` : ""}>
           ${v.poster ? `<img class="vv-poster" src="${v.poster}" alt="" />` : `<span class="vv-blank"></span>`}
@@ -270,51 +325,10 @@ function versionItem(v, isLatest) {
         <div class="pc-actions">
           <button class="btn btn-sm pc-copy" data-cap="${encodeURIComponent(caption)}">📋 Copy caption</button>
           <a class="btn btn-ghost btn-sm" download href="${v.video_url}">⬇ Download MP4</a>
-          <button class="btn btn-ghost btn-sm pc-publish" title="Connect a social account to publish">🚀 Publish</button>
         </div>
-        ${takesPanel(v)}
+        ${feedbackBlock(v)}
       </div>
     </div>`;
-}
-
-const fmtScore = (s) => (s == null ? "" : Number(s).toFixed(2));
-
-// Best-of-N take picker: per beat, every rendered take with its motion score.
-// Click a take to select it; "Re-stitch" rebuilds the cut from the chosen takes
-// (no Cosmos re-run). Auto-pick is the take that was selected at generation time.
-function takesPanel(v) {
-  if (!v.has_takes || !(v.takes && v.takes.length)) return "";
-  const beats = v.takes
-    .map((beat) => {
-      const takes = (beat.takes || [])
-        .map((t) => {
-          const sel = t.chosen ? " sel" : "";
-          const badge = t.score != null ? fmtScore(t.score) : `T${t.index + 1}`;
-          const media = t.poster
-            ? `<img src="${t.poster}" alt="" />`
-            : `<span class="vv-blank"></span>`;
-          return `<button class="take${sel}" data-beat="${beat.beat}" data-take="${t.index}"
-              data-url="${t.url}" data-poster="${t.poster || ""}" title="motion score ${badge}">
-              ${media}
-              <span class="take-badge">${badge}</span>
-              <span class="take-play">▶</span>
-            </button>`;
-        })
-        .join("");
-      const label = escapeHtml(beat.caption || `Beat ${beat.beat + 1}`);
-      return `<div class="take-beat"><div class="tb-label">${label}</div>
-        <div class="tb-takes">${takes}</div></div>`;
-    })
-    .join("");
-  return `
-    <details class="pc-takes" data-vid="${v.vid}">
-      <summary>🎞 Take picker — best-of-${v.best_of_n || v.takes[0].takes.length} · ${v.takes.length} beats</summary>
-      <div class="takes-beats">${beats}</div>
-      <div class="takes-actions">
-        <button class="btn btn-sm pc-restitch" data-vid="${v.vid}">✂ Re-stitch with selected takes</button>
-        <span class="restitch-status"></span>
-      </div>
-    </details>`;
 }
 
 // Big popup player. Created once and reused.
@@ -616,6 +630,7 @@ function renderStudio(d) {
         <button class="proj-tab" data-tab="agent">🤖 Agent Loop${genCount ? ` <span class="tab-badge">${genCount}</span>` : ""}</button>
       </div>
     </div>
+    ${northStar(d.goals)}
 
     <!-- ============ TAB: SOUL (formatted, editable markdown identity) ============ -->
     <div class="proj-panel" data-panel="soul">
@@ -695,11 +710,7 @@ function renderStudio(d) {
         </div>
         <label class="tavily-opt">
           <input type="checkbox" class="f-tavily" checked />
-          <span>Allow using Tavily search to research the neighborhood</span>
-        </label>
-        <label class="tavily-opt">
-          <input type="checkbox" class="f-walkthrough" />
-          <span>🚶 Walkthrough mode — first-person POV walk-in through each room (leans into Cosmos's world model)</span>
+          <span>Allow using Tavily search to research the brand &amp; audience</span>
         </label>
       </section>
     </div>
@@ -759,61 +770,60 @@ function renderStudio(d) {
     });
   };
 
-  // Best-of-N take picker: select takes per beat, then re-stitch the cut.
-  const wireTakeButtons = (root) => {
-    root.querySelectorAll(".pc-takes").forEach((panel) => {
-      panel.querySelectorAll(".take").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          if (e.target.closest(".take-play")) {
-            openLightbox(btn.dataset.url, btn.dataset.poster || undefined);
-            return;
-          }
-          btn.parentElement
-            .querySelectorAll(".take")
-            .forEach((t) => t.classList.toggle("sel", t === btn));
-        });
+  // The Checker: post / discard / log-performance on each cut.
+  const wireFeedbackButtons = (root) => {
+    const reRender = (card, fresh) => {
+      const wrap = document.createElement("div");
+      wrap.innerHTML = versionItem(fresh, card.querySelector(".latest-chip") != null);
+      const node = wrap.firstElementChild;
+      card.replaceWith(node);
+      wireCards(node.closest(".feed-item") || node);
+    };
+    const post = async (vid, path, body, statusEl) => {
+      const form = new FormData();
+      Object.entries(body).forEach(([k, val]) => form.append(k, val));
+      const r = await fetch(`/api/listings/${d.id}/versions/${vid}/${path}`, { method: "POST", body: form });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      return r.json();
+    };
+    root.querySelectorAll(".postcard[data-vid]").forEach((card) => {
+      const vid = card.dataset.vid;
+      const statusEl = card.querySelector(".fb-status");
+      const setStatus = (t) => statusEl && (statusEl.textContent = t);
+
+      card.querySelector(".fb-post")?.addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        setStatus("Posting…");
+        try { reRender(card, await post(vid, "decision", { decision: "posted" }, statusEl)); }
+        catch (err) { setStatus("✗ " + err.message); e.target.disabled = false; }
       });
 
-      const restitch = panel.querySelector(".pc-restitch");
-      const status = panel.querySelector(".restitch-status");
-      if (!restitch) return;
-      restitch.addEventListener("click", async () => {
-        const vid = panel.dataset.vid;
-        const picks = {};
-        panel.querySelectorAll(".take-beat").forEach((beatEl) => {
-          const sel = beatEl.querySelector(".take.sel");
-          if (sel) picks[sel.dataset.beat] = Number(sel.dataset.take);
-        });
-        const prev = restitch.textContent;
-        restitch.disabled = true;
-        restitch.textContent = "✂ Re-stitching…";
-        if (status) status.textContent = "";
-        try {
-          const form = new FormData();
-          form.append("picks", JSON.stringify(picks));
-          const r = await fetch(`/api/listings/${d.id}/versions/${vid}/restitch`, {
-            method: "POST",
-            body: form,
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const fresh = await r.json();
-          const card = panel.closest(".postcard");
-          const vbtn = card && card.querySelector(".version-video");
-          if (vbtn) {
-            vbtn.dataset.src = fresh.video_url;
-            if (fresh.poster) {
-              vbtn.dataset.poster = fresh.poster;
-              const img = vbtn.querySelector(".vv-poster");
-              if (img) img.src = fresh.poster;
-            }
-          }
-          if (status) status.textContent = "✓ Re-stitched";
-        } catch (err) {
-          if (status) status.textContent = `✗ ${err.message}`;
-        } finally {
-          restitch.disabled = false;
-          restitch.textContent = prev;
+      const discardBtn = card.querySelector(".fb-discard");
+      const note = card.querySelector(".fb-note");
+      discardBtn?.addEventListener("click", async () => {
+        if (note && note.hidden) {  // first click reveals the "why" field
+          note.hidden = false;
+          note.focus();
+          discardBtn.textContent = "🗑 Confirm slop";
+          return;
         }
+        discardBtn.disabled = true;
+        setStatus("Discarding…");
+        try { reRender(card, await post(vid, "decision", { decision: "discarded", notes: note ? note.value : "" }, statusEl)); }
+        catch (err) { setStatus("✗ " + err.message); discardBtn.disabled = false; }
+      });
+
+      card.querySelector(".fb-log")?.addEventListener("click", async (e) => {
+        const body = {
+          views: card.querySelector(".fb-views")?.value || "",
+          likes: card.querySelector(".fb-likes")?.value || "",
+          followers: card.querySelector(".fb-followers")?.value || "",
+        };
+        if (!body.views && !body.likes && !body.followers) { setStatus("Enter a number first"); return; }
+        e.target.disabled = true;
+        setStatus("Logging…");
+        try { reRender(card, await post(vid, "performance", body, statusEl)); }
+        catch (err) { setStatus("✗ " + err.message); e.target.disabled = false; }
       });
     });
   };
@@ -821,7 +831,7 @@ function renderStudio(d) {
   const wireCards = (root) => {
     wireVideoButtons(root);
     wirePostButtons(root);
-    wireTakeButtons(root);
+    wireFeedbackButtons(root);
   };
   wireCards(detailEl);
 
@@ -894,10 +904,6 @@ function renderStudio(d) {
   }
 
   regenBtn.addEventListener("click", async () => {
-    const available = new Set(d.available || INCLUDE_OPTIONS.map((o) => o.key));
-    const includes = [...available];
-    if (detailEl.querySelector(".f-tavily")?.checked) includes.push("tavily");
-
     // Brief = the Soul document + the agent prompt for this specific cut.
     const soulText = (detailEl.querySelector(".md-doc")?.innerText || "").trim();
     const prompt = (detailEl.querySelector(".agent-prompt")?.value || "").trim();
@@ -912,14 +918,10 @@ function renderStudio(d) {
     detailEl.querySelector('.proj-tab[data-tab="agent"]')?.click();
     addAction("🧠", `Reading the Soul · targeting ${fmtLabel}`);
     try {
-      const walkthrough = detailEl.querySelector(".f-walkthrough")?.checked;
-      if (walkthrough) addAction("🚶", "Walkthrough mode — first-person POV walk-in");
       const form = new FormData();
       form.append("instructions", instructions);
       form.append("price", det.price || "");
-      form.append("include", includes.join(","));
       form.append("fmt", selectedFmt);
-      form.append("walkthrough", walkthrough ? "1" : "0");
       const r = await fetch(`/api/listings/${d.id}/generate`, { method: "POST", body: form });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || "Generation failed");

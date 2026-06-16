@@ -489,43 +489,37 @@ body {
 .pc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .pc-copy.ok { color: #04201a; background: var(--accent-2); border-color: var(--accent-2); }
 
-/* --- best-of-N take picker --- */
-.pc-takes { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
-.pc-takes > summary {
-  cursor: pointer; font-size: 12.5px; color: var(--muted);
-  list-style: none; user-select: none;
+/* --- north-star goals header --- */
+.north-star {
+  margin: 14px 0 18px; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: 14px; background: rgba(124, 138, 255, 0.06);
 }
-.pc-takes > summary::-webkit-details-marker { display: none; }
-.pc-takes > summary::before { content: "▸ "; color: var(--accent-2); }
-.pc-takes[open] > summary::before { content: "▾ "; }
-.pc-takes > summary:hover { color: var(--text); }
-.takes-beats { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
-.take-beat { display: flex; flex-direction: column; gap: 5px; }
-.tb-label { font-size: 11.5px; color: var(--muted); font-weight: 600; }
-.tb-takes { display: flex; flex-wrap: wrap; gap: 6px; }
-.take {
-  position: relative; width: 84px; height: 50px; padding: 0; cursor: pointer;
-  border: 2px solid var(--line); border-radius: 8px; overflow: hidden;
-  background: #11151d; transition: border-color 0.12s, transform 0.12s;
+.north-star .ns-h { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+.ns-goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.ns-goal .ns-top { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+.ns-label { font-weight: 600; }
+.ns-num { color: var(--muted); }
+.ns-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+.ns-fill { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.4s; }
+.ns-goal.met .ns-fill { background: var(--accent-2); }
+
+/* --- the Checker: per-cut feedback --- */
+.pc-feedback {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 8px;
 }
-.take:hover { transform: translateY(-1px); border-color: var(--accent-2); }
-.take.sel { border-color: var(--accent-2); box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.25); }
-.take img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.take .vv-blank { display: block; width: 100%; height: 100%; background: #11151d; }
-.take-badge {
-  position: absolute; left: 3px; bottom: 3px; font-size: 9.5px; line-height: 1;
-  padding: 2px 4px; border-radius: 4px; color: #fff; background: rgba(0,0,0,0.6);
+.pc-feedback .fb-state { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.pc-feedback.posted .fb-state { color: var(--accent-2); }
+.pc-feedback.discarded .fb-state { color: #f0857d; }
+.fb-decide, .fb-perf { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fb-perf input, .fb-note {
+  background: #11151d; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); padding: 6px 9px; font-size: 12.5px;
 }
-.take.sel .take-badge { background: var(--accent-2); color: #04201a; font-weight: 700; }
-.take-play {
-  position: absolute; top: 3px; right: 3px; font-size: 9px; color: #fff;
-  width: 16px; height: 16px; border-radius: 50%; display: flex;
-  align-items: center; justify-content: center; padding-left: 1px;
-  background: rgba(0,0,0,0.55); opacity: 0; transition: opacity 0.12s;
-}
-.take:hover .take-play { opacity: 1; }
-.takes-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.restitch-status { font-size: 12px; color: var(--accent-2); }
+.fb-perf input { width: 92px; }
+.fb-note { width: 100%; }
+.fb-status { font-size: 12px; color: var(--accent-2); min-height: 14px; }
 
 .version-video {
   position: relative; display: block; width: 100%; height: 100%;

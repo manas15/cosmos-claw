@@ -58,5 +58,24 @@ class ClipGenerator(ABC):
         raise NotImplementedError
 
     def available(self) -> tuple[bool, str]:
-        """Return (is_ready, human_readable_reason)."""
+        """Return (is_ready, human_readable_reason).
+
+        This is a cheap, config-only check (e.g. "are the keys set?"). It does
+        NOT touch the network, so it can't see a dropped tunnel or a provider
+        outage — use ``live()`` for that.
+        """
         return True, "ready"
+
+    def live(self) -> bool:
+        """Active liveness probe — actually reach the backend if it's remote.
+
+        Local backends (and any that can't be probed cheaply) just report their
+        ``available()`` status. Remote backends should override this with a real
+        request so the loop can pause through a tunnel/provider blip instead of
+        burning a generation. Must never raise.
+        """
+        try:
+            ok, _ = self.available()
+            return ok
+        except Exception:  # noqa: BLE001
+            return False

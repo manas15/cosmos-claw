@@ -9,7 +9,9 @@ get normalized), and remember which listings already have a generated trailer.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
@@ -342,7 +344,46 @@ def takes_manifest_path(listing_id: str, vid: str) -> Path:
 
 def save_version_meta(listing_id: str, vid: str, meta: dict) -> None:
     _, _, mpath = version_paths(listing_id, vid)
-    mpath.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    tmp = mpath.with_suffix(mpath.suffix + f".tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    os.replace(tmp, mpath)
+
+
+def prune_versions(listing_id: str, keep: int | None = None) -> int:
+    """Bound disk use over a months-long run: keep the ``keep`` most recent
+    versions, deleting older ones — but NEVER delete a cut the human posted.
+
+    Returns the number of versions pruned. ``keep`` defaults to
+    ``config.VERSION_RETENTION``; 0 disables pruning.
+    """
+    keep = config.VERSION_RETENTION if keep is None else keep
+    if keep <= 0:
+        return 0
+    versions = list_versions(listing_id)  # newest first
+    if len(versions) <= keep:
+        return 0
+
+    pruned = 0
+    for v in versions[keep:]:
+        if v.get("vid") == "v1":  # legacy single-file trailer — leave it
+            continue
+        if str((v.get("meta") or {}).get("status", "")).lower() == "posted":
+            continue  # keep anything we actually published
+        vid = v["vid"]
+        mp4, jpg, meta = version_paths(listing_id, vid)
+        for p in (mp4, jpg, meta):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+        td = takes_dir(listing_id, vid)
+        if td.exists():
+            try:
+                shutil.rmtree(td, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                pass
+        pruned += 1
+    return pruned
 
 
 def _read_json(path: Path) -> dict:

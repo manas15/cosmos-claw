@@ -6,24 +6,20 @@ Then open:    http://127.0.0.1:8000
 
 from __future__ import annotations
 
-import json
-import shutil
 import threading
-import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import brand, config, infocards, listings
-from .ffmpeg_utils import convert_image, extract_poster, ffmpeg_available, probe_duration
+from . import brand, config, listings, videographer, vision
+from .ffmpeg_utils import convert_image, ffmpeg_available
 from .generation.factory import get_generator
-from .pipeline import generate_video, restitch_from_manifest
 
-# Generations mutate the output canvas (TRAILER_WIDTH/HEIGHT) per chosen social
-# format, so serialize them to keep one job's dimensions from racing another's.
+# make_reel mutates a global frame count (config.COSMOS_NUM_FRAMES) per cut, so
+# serialize web generations to keep one job from racing another's settings.
 GEN_LOCK = threading.Lock()
 
 app = FastAPI(title="Cosmos Claw", version="0.2.0")
@@ -101,124 +97,6 @@ def health() -> JSONResponse:
     )
 
 
-def _validate_ext(filename: str) -> str:
-    ext = Path(filename).suffix.lower()
-    allowed = config.ALLOWED_IMAGE_EXTS | config.ALLOWED_VIDEO_EXTS | config.ALLOWED_DOC_EXTS
-    if ext not in allowed:
-        raise HTTPException(400, f"Unsupported file type: {ext or '(none)'}")
-    return ext
-
-
-def _run_job(
-    job_id: str,
-    job_dir: Path,
-    media_paths: list[str],
-    instructions: str,
-    address: str,
-    lease: str,
-    mode: str,
-) -> None:
-    """Run the (blocking) pipeline on a worker thread, updating JOBS as it goes."""
-
-    def on_progress(done: int, total: int, label: str) -> None:
-        job = JOBS.get(job_id)
-        if job is not None:
-            job.update(current=done, total=total, label=label)
-
-    try:
-        generator = get_generator()
-        result = generate_video(
-            job_dir=job_dir,
-            media_paths=media_paths,
-            instructions=instructions,
-            address=address,
-            lease=lease,
-            generator=generator,
-            on_progress=on_progress,
-            mode=mode,
-        )
-        published = config.OUTPUT_DIR / f"{job_id}.mp4"
-        shutil.copyfile(Path(result["video_path"]), published)
-        JOBS[job_id].update(
-            status="done",
-            video_url=f"/outputs/{published.name}",
-            backend=result["backend"],
-            scene_count=result["scene_count"],
-            scenes=result["scenes"],
-        )
-    except Exception as e:  # surface ffmpeg/backend/director errors to the UI
-        JOBS[job_id].update(status="error", error=f"Generation failed: {e}")
-
-
-@app.post("/api/generate")
-async def api_generate(
-    files: list[UploadFile],
-    instructions: str = Form(""),
-    address: str = Form(""),
-    lease: str = Form(""),
-    mode: str = Form(config.DEFAULT_MODE),
-) -> JSONResponse:
-    if not files:
-        raise HTTPException(400, "Upload at least one photo or video.")
-    if len(files) > config.MAX_FILES:
-        raise HTTPException(400, f"Too many files (max {config.MAX_FILES}).")
-
-    job_id = uuid.uuid4().hex[:12]
-    job_dir = config.UPLOAD_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    media_paths: list[str] = []
-    pdf_facts: list[str] = []
-    for i, f in enumerate(files):
-        ext = _validate_ext(f.filename or f"file{i}")
-        dest = job_dir / f"input_{i:02d}{ext}"
-        with dest.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
-
-        if ext in config.ALLOWED_DOC_EXTS:
-            # Pull the listing facts out of the PDF and fold them into the brief.
-            text = listings.extract_facts(str(dest))
-            if text:
-                pdf_facts.append(text)
-            continue
-
-        # AVIF/HEIC aren't reliably readable by Pillow/ffmpeg or the Cosmos
-        # server — normalize them to baseline JPEG up front.
-        if ext in config.NORMALIZE_IMAGE_EXTS:
-            jpg = job_dir / f"input_{i:02d}.jpg"
-            dest = Path(convert_image(str(dest), str(jpg)))
-        media_paths.append(str(dest))
-
-    if not media_paths:
-        raise HTTPException(400, "Add at least one photo or video (a PDF alone isn't enough).")
-
-    # Combine typed instructions with any extracted PDF facts.
-    if pdf_facts:
-        facts_block = "\n\n".join(pdf_facts)
-        instructions = (
-            f"{instructions.strip()}\n\nListing facts from PDF:\n{facts_block}".strip()
-        )
-
-    JOBS[job_id] = {
-        "status": "running",
-        "current": 0,
-        "total": 0,
-        "label": "Starting…",
-        "video_url": None,
-        "error": None,
-    }
-
-    # Generation is long and blocking (GPT-4o + several Cosmos calls + ffmpeg),
-    # so run it off the event loop and let the client poll /api/job/{id}.
-    threading.Thread(
-        target=_run_job,
-        args=(job_id, job_dir, media_paths, instructions, address, lease, mode),
-        daemon=True,
-    ).start()
-
-    return JSONResponse({"job_id": job_id})
-
-
 @app.get("/api/job/{job_id}")
 def api_job(job_id: str) -> JSONResponse:
     job = JOBS.get(job_id)
@@ -268,9 +146,14 @@ def _version_payload(version: dict) -> dict:
         "handle": m.get("handle") or "",
         "caption": m.get("caption") or "",
         "hashtags": m.get("hashtags") or [],
-        "best_of_n": m.get("best_of_n", 1),
-        "has_takes": bool(m.get("has_takes")),
-        "takes": m.get("takes") or [],
+        "voiceover": m.get("voiceover") or "",
+        "source": m.get("source") or "",
+        # Feedback lifecycle (the Checker).
+        "status": m.get("status") or "pending_review",
+        "slop_notes": m.get("slop_notes") or "",
+        "posted_at": int(m["posted_at"] * 1000) if m.get("posted_at") else None,
+        "review_due": int(m["review_due"] * 1000) if m.get("review_due") else None,
+        "performance": (m.get("performance") or {}).get("metrics") or None,
     }
 
 
@@ -321,9 +204,26 @@ def api_listing_detail(listing_id: str) -> JSONResponse:
             "available": listings.available_includes(facts),
             "details": listings.extract_details(listing),
             "brand": brand.load_or_seed(listing),
+            "goals": _goals_progress(listing_id),
             "versions": versions,
         }
     )
+
+
+def _goals_progress(listing_id: str) -> list[dict]:
+    from . import goals
+
+    try:
+        return goals.progress(listing_id)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+@app.get("/api/listings/{listing_id}/goals")
+def api_listing_goals(listing_id: str) -> JSONResponse:
+    if listings.get_listing(listing_id) is None:
+        raise HTTPException(404, "Unknown listing.")
+    return JSONResponse({"goals": _goals_progress(listing_id)})
 
 
 @app.get("/api/listings/{listing_id}/photo/{idx}")
@@ -337,92 +237,22 @@ def api_listing_photo(listing_id: str, idx: int) -> FileResponse:
     return FileResponse(path, media_type="image/jpeg")
 
 
-def _apply_format(fmt: str) -> dict:
-    """Resolve a social format to its preset and point the render canvas at it.
-
-    Mutates the module-level dimensions both modules read (config reads at call
-    time; infocards captured W/H at import, so refresh those too).
-    """
-    preset = config.FORMAT_PRESETS.get(fmt) or config.FORMAT_PRESETS[config.DEFAULT_FORMAT]
-    config.TRAILER_WIDTH = preset["w"]
-    config.TRAILER_HEIGHT = preset["h"]
-    infocards.W, infocards.H = preset["w"], preset["h"]
-    return preset
-
-
-def _persist_takes(listing_id: str, vid: str, manifest: dict) -> dict:
-    """Copy best-of-N takes + audio into the version's takes dir and save the
-    re-stitch manifest. Returns the compact per-beat takes for the version meta."""
-    tdir = listings.takes_dir(listing_id, vid)
-    tdir.mkdir(parents=True, exist_ok=True)
-    compact: list[dict] = []
-    for si, seg in enumerate(manifest.get("segments", [])):
-        if seg.get("type") == "room":
-            beat = int(seg.get("beat", si))
-            kept: list[dict] = []
-            ctakes: list[dict] = []
-            for t in seg.get("takes", []):
-                k = int(t.get("index", 0))
-                dest = tdir / f"beat{beat:02d}_t{k}.mp4"
-                try:
-                    shutil.copyfile(t["clip"], dest)
-                except Exception:  # noqa: BLE001
-                    continue
-                poster = tdir / f"beat{beat:02d}_t{k}.jpg"
-                try:
-                    dur = probe_duration(str(dest)) or 4.0
-                    extract_poster(str(dest), str(poster), at_seconds=max(0.3, dur * 0.4))
-                except Exception:  # noqa: BLE001
-                    poster = None
-                t["clip"] = str(dest)  # rewrite manifest to the persisted path
-                kept.append(t)
-                ctakes.append(
-                    {
-                        "index": k,
-                        "url": f"/outputs/{tdir.name}/{dest.name}",
-                        "poster": (
-                            f"/outputs/{tdir.name}/{poster.name}"
-                            if poster and poster.exists() else None
-                        ),
-                        "score": t.get("score"),
-                        "motion": t.get("motion"),
-                        "smoothness": t.get("smoothness"),
-                        "chosen": bool(t.get("chosen")),
-                    }
-                )
-            seg["takes"] = kept
-            compact.append(
-                {
-                    "beat": beat,
-                    "caption": seg.get("caption", ""),
-                    "shot": seg.get("shot", ""),
-                    "chosen": int(seg.get("chosen", 0)),
-                    "takes": ctakes,
-                }
-            )
-        elif seg.get("clip"):
-            dest = tdir / f"seg{si:02d}.mp4"
-            try:
-                shutil.copyfile(seg["clip"], dest)
-                seg["clip"] = str(dest)
-            except Exception:  # noqa: BLE001
-                pass
-
-    audio = manifest.get("audio") or {}
-    for key, name in (("music", "music.wav"), ("voiceover", "vo.mp3")):
-        src = audio.get(key)
-        if src and Path(src).exists():
-            dest = tdir / name
-            try:
-                shutil.copyfile(src, dest)
-                audio[key] = str(dest)
-            except Exception:  # noqa: BLE001
-                pass
-    manifest["audio"] = audio
-    listings.takes_manifest_path(listing_id, vid).write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
-    return {"beats": compact}
+def _web_asset_index(listing: listings.Listing, dossier: dict, media_paths: list[str],
+                     work: Path) -> list[dict]:
+    """Label each chosen photo (reusing the dossier's cached labels when the
+    count matches, so the UI doesn't pay for vision on every click)."""
+    cached = dossier.get("asset_index") or []
+    context = (dossier.get("brand") or {}).get("oneliner") or dossier.get("use_case") or ""
+    index: list[dict] = []
+    for i, p in enumerate(media_paths):
+        if i < len(cached) and len(cached) == len(media_paths):
+            c = cached[i]
+            index.append({"index": i, "path": p, "label": c.get("label", ""),
+                          "shot": c.get("shot", "walk forward"), "prompt": c.get("prompt", "")})
+        else:
+            info = vision.analyze(p, work, i, context=context)
+            index.append({"index": i, "path": p, **info})
+    return index
 
 
 def _run_listing_job(
@@ -430,11 +260,9 @@ def _run_listing_job(
     listing_id: str,
     extra_instructions: str = "",
     price: str = "",
-    include: set[str] | None = None,
     fmt: str = "",
-    walkthrough: bool = False,
 ) -> None:
-    """Generate a social trailer for a whole listing folder."""
+    """Generate one social reel for a whole project folder via the videographer."""
 
     def on_progress(done: int, total: int, label: str) -> None:
         job = JOBS.get(job_id)
@@ -442,7 +270,7 @@ def _run_listing_job(
             job.update(current=done, total=total, label=label)
 
     fmt = (fmt or config.DEFAULT_FORMAT).lower()
-    print(f"[listing] generate {listing_id} fmt={fmt} include={sorted(include) if include else 'ALL'} price={price!r}")
+    print(f"[listing] generate {listing_id} fmt={fmt} price={price!r}")
     try:
         listing = listings.get_listing(listing_id)
         if listing is None:
@@ -451,109 +279,49 @@ def _run_listing_job(
         job_dir = config.UPLOAD_DIR / f"listing_{listing_id}"
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        # Normalize the chosen photos to JPEG so Pillow/ffmpeg/Cosmos can read them.
+        # Normalize photos to JPEG so Pillow/ffmpeg/the backend can read them.
         media_paths: list[str] = []
         for i, src in enumerate(listing.photos[:MAX_LISTING_PHOTOS]):
             dest = job_dir / f"photo_{i:02d}.jpg"
             media_paths.append(convert_image(str(src), str(dest)))
+        if len(media_paths) < 2:
+            raise RuntimeError("Need at least 2 photos to film a reel.")
 
-        # PDF facts ground the trailer; the user's director notes go on top.
-        instructions = listings.facts_for(listing)
-        if extra_instructions.strip():
-            instructions = f"{extra_instructions.strip()}\n\n{instructions}".strip()
-
-        # The brand dossier is the consistency anchor: every generation grounds on
-        # the same (real + fabricated) facts and follows the marketing brief.
         dossier = brand.load_or_seed(listing)
-        grounding = brand.grounding_text(dossier)
-        brief = dossier.get("brief") or None
-        if not price:
-            price = (dossier.get("facts") or {}).get("price") or ""
-        if walkthrough:
-            brand.log_activity(
-                listing_id, "🚶", f"Filming a first-person walkthrough ({fmt})", "generate"
-            )
-        else:
-            brand.log_activity(listing_id, "🎬", f"Filming a {fmt} cut from the brief", "generate")
+        if price and not (dossier.get("facts") or {}).get("price"):
+            brand.add_assumption(listing_id, "price", price)
+            dossier = brand.load(listing_id) or dossier
+        brand_ = dossier.get("brand") or {}
+        brief = dossier.get("brief") or {}
 
-        # Hold the lock for the whole render: the canvas dimensions are global.
+        asset_index = _web_asset_index(listing, dossier, media_paths, job_dir)
+        idea = {
+            "theme": (extra_instructions.strip()[:70] or f"{listing.name} — fresh cut"),
+            "angle": extra_instructions.strip()[:160],
+            "format": fmt,
+            "music": brief.get("music") or brand_.get("music") or "uplifting",
+            "voice": brief.get("voice") or brand_.get("voice") or config.TTS_VOICE,
+            "photo_indices": [a["index"] for a in asset_index],
+            "caption": "",  # build_post fills a grounded caption
+            "voiceover": brief.get("voiceover") or "",
+            "hashtags": [],
+        }
+
         with GEN_LOCK:
-            preset = _apply_format(fmt)
-            result = generate_video(
-                job_dir=job_dir,
-                media_paths=media_paths,
-                instructions=instructions,
-                address=listing.name,
-                lease=price,
-                generator=get_generator(),
+            vid = videographer.make_reel(
+                listing, dossier, idea, get_generator(), job_dir,
+                asset_index=asset_index,
                 on_progress=on_progress,
-                mode="trailer",
-                include=include,
-                brief=brief,
-                grounding=grounding,
-                walkthrough=walkthrough,
+                source="web",
             )
+        if not vid:
+            raise RuntimeError("Reel generation produced no clips.")
 
-        # Each generation is its own version so the listing keeps a full history.
-        vid = listings.new_version_id()
-        created_at = time.time()
-        vpath, ppath, _ = listings.version_paths(listing_id, vid)
-        shutil.copyfile(Path(result["video_path"]), vpath)
-
-        # A clean cover frame from ~20% in (past the opening fade, before the
-        # end card) so the video doesn't show a black poster.
-        try:
-            dur = probe_duration(str(vpath)) or 10.0
-            extract_poster(str(vpath), str(ppath), at_seconds=max(1.0, dur * 0.2))
-        except Exception as exc:  # noqa: BLE001
-            print(f"[listing] poster extraction failed: {exc}")
-
-        # Best-of-N: persist every take + the re-stitch manifest so the Studio
-        # take picker can swap a beat's take without re-running Cosmos.
-        takes_beats: list[dict] = []
-        if result.get("takes_manifest"):
-            try:
-                takes_beats = _persist_takes(listing_id, vid, result["takes_manifest"]).get("beats", [])
-            except Exception as exc:  # noqa: BLE001
-                print(f"[listing] takes persist failed: {exc}")
-
-        end_card = result.get("end_card") or {}
-        # A copy-paste-ready social post for this cut (handle, caption, hashtags).
-        post = brand.build_post(dossier, preset["label"])
-        listings.save_version_meta(
-            listing_id,
-            vid,
-            {
-                "name": listing.name,
-                "title": result.get("title") or listing.name,
-                "location": result.get("location") or end_card.get("location") or "",
-                "highlight": end_card.get("highlight") or "",
-                "price": result.get("price") or "",
-                "voiceover": result.get("voiceover") or "",
-                "scene_count": result.get("scene_count", 0),
-                "info_card_count": result.get("info_card_count", 0),
-                "format": fmt,
-                "format_label": preset["label"],
-                "ratio": preset["ratio"],
-                "voice": (brief or {}).get("voice") or config.TTS_VOICE,
-                "music": (brief or {}).get("music") or "warm",
-                "handle": post["handle"],
-                "caption": post["caption"],
-                "hashtags": post["hashtags"],
-                "best_of_n": result.get("best_of_n", 1),
-                "has_takes": bool(takes_beats),
-                "takes": takes_beats,
-                "created_at": created_at,
-            },
-        )
-        brand.log_activity(
-            listing_id, "✅", f"Published a {preset['label']} cut ({preset['ratio']})", "publish"
-        )
+        vpath, _, _ = listings.version_paths(listing_id, vid)
         JOBS[job_id].update(
             status="done",
             video_url=f"/outputs/{vpath.name}",
-            backend=result["backend"],
-            scene_count=result["scene_count"],
+            backend=get_generator().name,
             listing_id=listing_id,
             vid=vid,
         )
@@ -566,17 +334,11 @@ def api_listing_generate(
     listing_id: str,
     instructions: str = Form(""),
     price: str = Form(""),
-    include: str = Form(""),
     fmt: str = Form(""),
-    walkthrough: str = Form(""),
 ) -> JSONResponse:
     listing = listings.get_listing(listing_id)
     if listing is None:
         raise HTTPException(404, "Unknown listing.")
-
-    # Comma-separated include keys; empty -> include everything (default).
-    inc = {p.strip() for p in include.split(",") if p.strip()} or None
-    walk = walkthrough.strip().lower() in ("1", "true", "on", "yes")
 
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {
@@ -590,7 +352,7 @@ def api_listing_generate(
     }
     threading.Thread(
         target=_run_listing_job,
-        args=(job_id, listing_id, instructions, price, inc, fmt, walk),
+        args=(job_id, listing_id, instructions, price, fmt),
         daemon=True,
     ).start()
     return JSONResponse({"job_id": job_id})
@@ -640,66 +402,53 @@ def api_listing_agent_run(listing_id: str, fmt: str = Form("")) -> JSONResponse:
     return JSONResponse({"job_id": job_id})
 
 
-@app.post("/api/listings/{listing_id}/versions/{vid}/restitch")
-def api_restitch(listing_id: str, vid: str, picks: str = Form("")) -> JSONResponse:
-    """Re-stitch a best-of-N version using the chosen take per beat.
-
-    ``picks`` is a JSON object mapping beat index -> take index. Re-concats +
-    re-muxes from the persisted manifest (no Cosmos re-run) and overwrites the
-    version's MP4 + poster.
-    """
-    listing = listings.get_listing(listing_id)
-    if listing is None:
-        raise HTTPException(404, "Unknown listing.")
-    mpath = listings.takes_manifest_path(listing_id, vid)
-    if not mpath.exists():
-        raise HTTPException(404, "No takes saved for this version.")
-
-    try:
-        manifest = json.loads(mpath.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        raise HTTPException(500, "Corrupt takes manifest.")
-
-    try:
-        raw_picks = json.loads(picks or "{}")
-        pick_map = {int(k): int(v) for k, v in raw_picks.items()}
-    except Exception:  # noqa: BLE001
-        raise HTTPException(400, "picks must be a JSON object of beat->take ints.")
-
-    vpath, ppath, meta_p = listings.version_paths(listing_id, vid)
-    work = config.UPLOAD_DIR / f"listing_{listing_id}" / "restitch"
-    with GEN_LOCK:
-        restitch_from_manifest(manifest, pick_map, str(vpath), work)
-
-    # Persist the new chosen takes back into the manifest + version meta.
-    for seg in manifest.get("segments", []):
-        if seg.get("type") == "room":
-            b = int(seg.get("beat", -1))
-            if b in pick_map:
-                seg["chosen"] = pick_map[b]
-                for t in seg.get("takes", []):
-                    t["chosen"] = t.get("index") == pick_map[b]
-    mpath.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-    try:
-        dur = probe_duration(str(vpath)) or 10.0
-        extract_poster(str(vpath), str(ppath), at_seconds=max(1.0, dur * 0.2))
-    except Exception as exc:  # noqa: BLE001
-        print(f"[restitch] poster failed: {exc}")
-
-    meta = listings._read_json(meta_p)
-    for beat in meta.get("takes", []):
-        b = int(beat.get("beat", -1))
-        if b in pick_map:
-            beat["chosen"] = pick_map[b]
-            for t in beat.get("takes", []):
-                t["chosen"] = t.get("index") == pick_map[b]
-    listings.save_version_meta(listing_id, vid, meta)
-
+def _version_payload_for(listing_id: str, vid: str) -> JSONResponse:
     for v in listings.list_versions(listing_id):
         if v["vid"] == vid:
             return JSONResponse(_version_payload(v))
-    raise HTTPException(404, "Version not found after re-stitch.")
+    raise HTTPException(404, "Version not found.")
+
+
+@app.post("/api/listings/{listing_id}/versions/{vid}/decision")
+def api_version_decision(
+    listing_id: str, vid: str,
+    decision: str = Form(...), notes: str = Form(""),
+) -> JSONResponse:
+    """The Checker: POST a cut live or DISCARD it as slop (with an optional why)."""
+    from . import feedback
+
+    if listings.get_listing(listing_id) is None:
+        raise HTTPException(404, "Unknown listing.")
+    try:
+        feedback.record_decision(listing_id, vid, decision, slop_notes=notes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return _version_payload_for(listing_id, vid)
+
+
+@app.post("/api/listings/{listing_id}/versions/{vid}/performance")
+def api_version_performance(
+    listing_id: str, vid: str,
+    views: str = Form(""), likes: str = Form(""), comments: str = Form(""),
+    shares: str = Form(""), followers: str = Form(""),
+) -> JSONResponse:
+    """Log how a posted cut performed; feeds lessons + goals."""
+    from . import feedback
+
+    if listings.get_listing(listing_id) is None:
+        raise HTTPException(404, "Unknown listing.")
+    metrics = {}
+    for name, raw in (("views", views), ("likes", likes), ("comments", comments),
+                      ("shares", shares), ("followers", followers)):
+        if str(raw).strip():
+            metrics[name] = raw
+    if not metrics:
+        raise HTTPException(400, "Provide at least one metric.")
+    try:
+        feedback.record_performance(listing_id, vid, metrics)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return _version_payload_for(listing_id, vid)
 
 
 @app.get("/api/reels")

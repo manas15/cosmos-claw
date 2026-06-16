@@ -36,7 +36,6 @@ VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 VIDEO_FPS = 24
 SCENE_DURATION = 4.0  # seconds per generated scene clip
-END_CARD_DURATION = 5.0
 
 # Upload limits.
 MAX_FILES = 12
@@ -47,40 +46,23 @@ ALLOWED_DOC_EXTS = {".pdf"}
 # Formats Pillow/ffmpeg can't reliably read; normalized to JPEG on upload.
 NORMALIZE_IMAGE_EXTS = {".avif", ".heic", ".heif"}
 
-# --- Listing trailer mode (landscape 16:9 property promo) ---
-# Default experience now: a ~30s landscape Airbnb-style listing trailer (desktop).
-DEFAULT_MODE = os.environ.get("LIVEHERE_MODE", "trailer").lower()
-TRAILER_WIDTH = int(os.environ.get("TRAILER_WIDTH", "1920"))
-TRAILER_HEIGHT = int(os.environ.get("TRAILER_HEIGHT", "1080"))
+# Default render canvas (vertical 9:16 for reels/TikTok). Used as the fallback
+# size when a format preset isn't passed explicitly.
+TRAILER_WIDTH = int(os.environ.get("TRAILER_WIDTH", "1080"))
+TRAILER_HEIGHT = int(os.environ.get("TRAILER_HEIGHT", "1920"))
 
-# Social delivery formats the agent can render to. Each maps to an output
-# canvas; the pipeline blur-pads/centers shots to fit any of these.
+# Social delivery formats the videographer renders to. Vertical short-form only
+# (the two platforms the agents grow). Each maps to an output canvas; clips are
+# scaled/cropped to fit. Add your own preset here to target another surface.
 FORMAT_PRESETS: dict[str, dict] = {
     "reel": {"label": "Instagram Reel", "w": 1080, "h": 1920, "ratio": "9:16"},
     "tiktok": {"label": "TikTok", "w": 1080, "h": 1920, "ratio": "9:16"},
-    "shorts": {"label": "YouTube Shorts", "w": 1080, "h": 1920, "ratio": "9:16"},
-    "story": {"label": "Instagram Story", "w": 1080, "h": 1920, "ratio": "9:16"},
-    "snap": {"label": "Snapchat Story", "w": 1080, "h": 1920, "ratio": "9:16"},
-    "youtube": {"label": "YouTube", "w": 1920, "h": 1080, "ratio": "16:9"},
-    "square": {"label": "Instagram Feed", "w": 1080, "h": 1080, "ratio": "1:1"},
-    "portrait": {"label": "Instagram Portrait", "w": 1080, "h": 1350, "ratio": "4:5"},
 }
 DEFAULT_FORMAT = os.environ.get("DEFAULT_FORMAT", "reel").lower()
-TRAILER_TARGET_BEATS = int(os.environ.get("TRAILER_TARGET_BEATS", "6"))
-TRAILER_END_CARD_DURATION = float(os.environ.get("TRAILER_END_CARD_DURATION", "4.5"))
 # OpenAI TTS voiceover.
 TTS_MODEL = os.environ.get("TTS_MODEL", "gpt-4o-mini-tts")
 TTS_VOICE = os.environ.get("TTS_VOICE", "nova")
 
-# --- Info cards (map, price, rating) interleaved with the room b-roll ---
-INFO_CARDS_ENABLED = os.environ.get("INFO_CARDS_ENABLED", "1") not in ("0", "false", "False")
-INFO_CARD_DURATION = float(os.environ.get("INFO_CARD_DURATION", "3.6"))
-# Map tiles (Carto dark — permissive, matches the dark UI). Attribution required.
-MAP_TILE_URL = os.environ.get(
-    "MAP_TILE_URL", "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-)
-# Nominatim (OSM geocoder) needs a descriptive User-Agent per its usage policy.
-GEOCODER_USER_AGENT = os.environ.get("GEOCODER_USER_AGENT", "CosmosClaw-hackathon/0.2")
 # Optional custom music bed (mp3/wav); if unset we synthesize a soft pad.
 MUSIC_PATH = os.environ.get("MUSIC_PATH", "")
 MUSIC_VOLUME = float(os.environ.get("MUSIC_VOLUME", "0.16"))
@@ -168,13 +150,51 @@ COSMOS_NEGATIVE_PROMPT = os.environ.get(
     "hallucination, surreal, oversaturated, fisheye, wobbling, shaking",
 )
 
-# --- GPT-4o "director": turns raw uploads into a first-person POV storyboard ---
-# When OPENAI_API_KEY is set, the pipeline uses the director; otherwise it falls
-# back to the simple morning/day/evening storyboard.
+# --- Pluggable video backend (VIDEO_*) ----------------------------------
+# Generic OpenAI-compatible image->video server (LIVEHERE_BACKEND=openai_video).
+# Anything that speaks a vLLM-Omni-style multipart /videos endpoint works here
+# without writing a new adapter; point it at your own model.
+VIDEO_BASE_URL = os.environ.get("VIDEO_BASE_URL", "").rstrip("/")
+VIDEO_API_KEY = os.environ.get("VIDEO_API_KEY", "")
+VIDEO_MODEL = os.environ.get("VIDEO_MODEL", "")
+VIDEO_VIDEOS_PATH = os.environ.get("VIDEO_VIDEOS_PATH", "/videos/sync")
+VIDEO_SIZE = os.environ.get("VIDEO_SIZE", "1280x720")
+VIDEO_TIMEOUT = int(os.environ.get("VIDEO_TIMEOUT", "900"))
+VIDEO_MAX_RETRIES = int(os.environ.get("VIDEO_MAX_RETRIES", "3"))
+# Extra provider-specific form fields as a JSON object, merged into the request.
+VIDEO_EXTRA_PARAMS = os.environ.get("VIDEO_EXTRA_PARAMS", "")
+# API keys for the optional hosted-provider adapters (only the one you use
+# needs to be set; each adapter's SDK is an optional/lazy import).
+RUNWAY_API_KEY = os.environ.get("RUNWAY_API_KEY", "")
+LUMA_API_KEY = os.environ.get("LUMA_API_KEY", "")
+KLING_API_KEY = os.environ.get("KLING_API_KEY", "")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")  # Veo (via google-genai)
+PIKA_API_KEY = os.environ.get("PIKA_API_KEY", "")
+# Open / self-hostable models (LTX-Video, Wan, Stable Video Diffusion) are run
+# through a local diffusers pipeline or your own server URL.
+LTX_MODEL = os.environ.get("LTX_MODEL", "Lightricks/LTX-Video")
+WAN_MODEL = os.environ.get("WAN_MODEL", "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers")
+SVD_MODEL = os.environ.get("SVD_MODEL", "stabilityai/stable-video-diffusion-img2vid-xt")
+
+# --- GPT-4o brain: vision (photo analysis), ideation, captions, voiceover ---
+# When OPENAI_API_KEY is set the agents use GPT-4o; otherwise they fall back to
+# generic prompts/labels so the app still runs offline.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 
 # --- Tavily: hackathon search partner (location / nearby / POI lookups) ---
 # Badge shows "connected" when this key is present.
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
-DIRECTOR_TARGET_BEATS = int(os.environ.get("DIRECTOR_TARGET_BEATS", "7"))
+
+# --- Long-horizon durability (the loop runs for months) -----------------
+# The dossier's append-only lists (activity, research) are compacted once they
+# pass these caps: the trimmed portion is folded into a one-line "chronicle"
+# milestone so nothing meaningful is lost while the file stays bounded.
+ACTIVITY_CAP = int(os.environ.get("ACTIVITY_CAP", "200"))
+RESEARCH_CAP = int(os.environ.get("RESEARCH_CAP", "60"))
+CHRONICLE_CAP = int(os.environ.get("CHRONICLE_CAP", "120"))
+# Weekly reflection cadence (seconds): distil lessons + write a chronicle entry.
+REFLECT_EVERY = int(os.environ.get("REFLECT_EVERY", str(7 * 24 * 3600)))
+# Disk retention: keep at most this many recent video versions per project on
+# disk; older, un-posted cuts are pruned. 0 = keep everything (no pruning).
+VERSION_RETENTION = int(os.environ.get("VERSION_RETENTION", "60"))

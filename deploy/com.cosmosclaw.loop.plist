@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd unit for the always-on videographer loop.
+
+  1. Edit the two ABSOLUTE paths below to point at your checkout
+     (launchd does not expand ~, $HOME, or relative paths).
+  2. cp deploy/com.cosmosclaw.loop.plist ~/Library/LaunchAgents/
+  3. launchctl load -w ~/Library/LaunchAgents/com.cosmosclaw.loop.plist
+  4. tail -f outputs/logs/loop.log
+
+  KeepAlive restarts the wrapper if it is ever killed; the wrapper itself
+  already restarts the loop on crash, so this is a belt-and-suspenders backstop.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cosmosclaw.loop</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/ABSOLUTE/PATH/TO/LiveHere/deploy/run_local.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PATH/TO/LiveHere</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/LiveHere/outputs/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/LiveHere/outputs/logs/launchd.err.log</string>
+</dict>
+</plist>

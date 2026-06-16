@@ -13,17 +13,21 @@ Mirrors the simple JSON-in-OUTPUT_DIR pattern used in ``listings.py``.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
 
 from . import config, listings
 
-# Fact keys we carry from the structured listing details into the dossier.
-_FACT_KEYS = (
-    "title", "location", "price", "guests", "bedrooms", "beds", "baths",
-    "rating", "reviews", "host", "summary", "superhost", "amenities", "nearby",
-)
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a temp file + atomic rename so a crash/kill mid-write (the loop
+    runs for months) can never leave a half-written, unparseable dossier."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def brand_path(listing_id: str) -> Path:
@@ -39,6 +43,9 @@ def _default_dossier(listing: listings.Listing) -> dict:
     return {
         "listing_id": listing.id,
         "name": listing.name,
+        # Free-text use-case so the agent works for ANY project (rental, cafe,
+        # gym, product, creator, event...). Drives tone, hashtags, and the CTA.
+        "use_case": "",
         "brand": {
             "oneliner": "",
             "audience": "",
@@ -46,6 +53,8 @@ def _default_dossier(listing: listings.Listing) -> dict:
             "voice": config.TTS_VOICE,   # OpenAI TTS voice id
             "music": "warm",             # mood label
             "selling_points": [],
+            "cta": "",                   # call to action (e.g. "Book now", "Visit us")
+            "handle": "",                # social handle (@...) once chosen
         },
         # Each: {"field", "value", "source": "assumed"} - the consistency contract.
         "assumptions": [],
@@ -67,23 +76,132 @@ def _default_dossier(listing: listings.Listing) -> dict:
         },
         # Timeline entries surfaced in the Agent Loop feed.
         "activity": [],
+        # What the agent learned from human feedback + performance (Phase 3):
+        # short "avoid X" / "do more Y" notes fed back into ideation.
+        "lessons": [],
+        # Milestone summaries the weekly reflection folds older history into.
+        "chronicle": [],
         "updated_at": _now(),
     }
 
 
+def add_lessons(listing_id: str, new_lessons: list[str], cap: int = 40) -> dict | None:
+    """Append de-duplicated lessons learned (kept bounded). Returns the dossier."""
+    dossier = load(listing_id)
+    if dossier is None:
+        return None
+    existing = dossier.setdefault("lessons", [])
+    seen = {str(x).strip().lower() for x in existing}
+    for lesson in new_lessons:
+        s = str(lesson).strip()
+        if s and s.lower() not in seen:
+            existing.append(s)
+            seen.add(s.lower())
+    if len(existing) > cap:  # keep the most recent lessons
+        dossier["lessons"] = existing[-cap:]
+    save(listing_id, dossier)
+    return dossier
+
+
+def _fold_chronicle(dossier: dict, summary: str) -> None:
+    """Append a bounded one-line milestone to the chronicle."""
+    chron = dossier.setdefault("chronicle", [])
+    chron.append({"ts": _now(), "summary": summary})
+    if len(chron) > config.CHRONICLE_CAP:
+        dossier["chronicle"] = chron[-config.CHRONICLE_CAP:]
+
+
+def compact(listing_id: str) -> dict | None:
+    """Keep the dossier bounded over a months-long run.
+
+    When the append-only ``activity``/``research`` logs grow past their caps the
+    oldest entries are dropped, but a single chronicle line records how many were
+    folded away (and the date range) so the agent keeps a coarse long-term memory.
+    """
+    dossier = load(listing_id)
+    if dossier is None:
+        return None
+    changed = False
+
+    activity = dossier.get("activity", [])
+    if len(activity) > config.ACTIVITY_CAP:
+        drop = activity[: len(activity) - config.ACTIVITY_CAP]
+        kept = activity[len(activity) - config.ACTIVITY_CAP:]
+        first = time.strftime("%Y-%m-%d", time.localtime(drop[0].get("ts", _now())))
+        last = time.strftime("%Y-%m-%d", time.localtime(drop[-1].get("ts", _now())))
+        _fold_chronicle(dossier, f"Folded {len(drop)} earlier activity entries ({first} → {last}).")
+        dossier["activity"] = kept
+        changed = True
+
+    research = dossier.get("research", [])
+    if len(research) > config.RESEARCH_CAP:
+        dossier["research"] = research[-config.RESEARCH_CAP:]
+        changed = True
+
+    if changed:
+        save(listing_id, dossier)
+    return dossier
+
+
+def reflect(listing_id: str, *, force: bool = False) -> bool:
+    """Weekly reflection: distil durable lessons and write a chronicle milestone.
+
+    Runs at most once per ``config.REFLECT_EVERY`` window (tracked in the dossier)
+    unless ``force`` is set. Returns True when a reflection actually happened.
+    """
+    dossier = load(listing_id)
+    if dossier is None:
+        return False
+    last = float(dossier.get("last_reflect_at") or 0)
+    if not force and (_now() - last) < config.REFLECT_EVERY:
+        return False
+
+    # Distil lessons from feedback (lazy import avoids a circular dependency).
+    try:
+        from . import feedback
+
+        feedback.derive_lessons(listing_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+    posted = len(listings.list_versions(listing_id))
+    progress_bits: list[str] = []
+    try:
+        from . import goals
+
+        for g in goals.progress(listing_id):
+            progress_bits.append(f"{g['label']} {round(g['pct'], 1)}%")
+    except Exception:  # noqa: BLE001
+        pass
+
+    dossier = load(listing_id) or dossier  # reload after derive_lessons saved
+    summary = f"Weekly reflection — {posted} cuts on disk"
+    if progress_bits:
+        summary += "; " + ", ".join(progress_bits)
+    _fold_chronicle(dossier, summary)
+    dossier["last_reflect_at"] = _now()
+    save(listing_id, dossier)
+    return True
+
+
 def seed_from_listing(listing: listings.Listing) -> dict:
-    """Build (and persist) a starting dossier from the listing's parsed facts."""
+    """Build (and persist) a starting dossier from a project's optional details.
+
+    A project is just a folder of photos. If extra context exists (an Airbnb-style
+    PDF, a notes file, structured details) it's folded in as free-form facts, but
+    NOTHING here is required — a bare photo folder for any use-case seeds fine.
+    """
     dossier = _default_dossier(listing)
     try:
         det = listings.extract_details(listing)
     except Exception:  # noqa: BLE001
         det = {}
-    facts: dict = {}
-    for k in _FACT_KEYS:
-        default = [] if k in ("amenities", "nearby") else (False if k == "superhost" else "")
-        facts[k] = det.get(k, default)
+    # Store whatever we found as free-form facts (no rental-specific schema).
+    facts = {k: v for k, v in (det or {}).items() if v not in (None, "", [], False, {})}
     dossier["facts"] = facts
-    dossier["brand"]["selling_points"] = list(det.get("amenities") or [])[:5]
+    dossier["use_case"] = str(det.get("kind") or det.get("use_case") or "").strip()
+    highlights = det.get("amenities") or det.get("highlights") or det.get("features") or []
+    dossier["brand"]["selling_points"] = list(highlights)[:5]
     save(listing.id, dossier)
     return dossier
 
@@ -107,7 +225,7 @@ def load_or_seed(listing: listings.Listing) -> dict:
 
 def save(listing_id: str, dossier: dict) -> None:
     dossier["updated_at"] = _now()
-    brand_path(listing_id).write_text(json.dumps(dossier, indent=2), encoding="utf-8")
+    _atomic_write(brand_path(listing_id), json.dumps(dossier, indent=2))
 
 
 def log_activity(listing_id: str, icon: str, text: str, kind: str = "action") -> dict | None:
@@ -163,35 +281,40 @@ def post_handle(dossier: dict) -> str:
     if existing:
         return existing
     facts = dossier.get("facts") or {}
-    name = facts.get("title") or dossier.get("name") or "stay"
-    slug = re.sub(r"[^a-z0-9]", "", name.lower())[:24] or "stay"
+    name = facts.get("title") or dossier.get("name") or "brand"
+    slug = re.sub(r"[^a-z0-9]", "", name.lower())[:24] or "brand"
     return f"@{slug}"
 
 
-def _hashtags(facts: dict, fmt_label: str) -> list[str]:
-    """Build a small, relevant hashtag set from location + the format."""
+def _hashtags(dossier: dict, fmt_label: str) -> list[str]:
+    """Build a small, relevant hashtag set from the brand itself (use-case
+    agnostic): location, use-case words, brand name, and the platform format."""
+    facts = dossier.get("facts") or {}
+    brand_ = dossier.get("brand") or {}
     tags: list[str] = []
     seen: set[str] = set()
 
-    def add(tag: str) -> None:
-        key = tag.lower()
-        if tag and key not in seen:
+    def add(text: str) -> None:
+        token = "".join(w.capitalize() for w in re.findall(r"[A-Za-z0-9]+", text or ""))
+        key = token.lower()
+        if token and key not in seen:
             seen.add(key)
-            tags.append(tag)
+            tags.append(f"#{token}")
 
-    location = facts.get("location") or ""
-    for part in re.split(r"[,/]", location):
-        token = "".join(w.capitalize() for w in re.findall(r"[A-Za-z0-9]+", part))
-        if token:
-            add(f"#{token}")
+    for part in re.split(r"[,/]", facts.get("location") or ""):
+        add(part)
+    for word in re.split(r"[\s,/&-]+", dossier.get("use_case") or ""):
+        if len(word) > 2:
+            add(word)
+    add(dossier.get("name") or "")
 
     fl = (fmt_label or "").lower()
     if "youtube" in fl or "short" in fl:
-        add("#Shorts")
+        add("Shorts")
     elif any(k in fl for k in ("reel", "tiktok", "story", "snap")):
-        add("#Reels")
-
-    for t in ("#Airbnb", "#VacationRental", "#TravelGoals", "#StayHere"):
+        add("Reels")
+    # A couple of evergreen growth tags that fit any vertical.
+    for t in ("trending", "fyp"):
         add(t)
     return tags[:8]
 
@@ -226,9 +349,10 @@ def build_post(dossier: dict, fmt_label: str = "") -> dict:
         info.append(f"💰 {facts['price']}")
     if info:
         blocks.append("  ·  ".join(info))
-    blocks.append("📩 DM to book — link in bio")
+    cta = (brand_.get("cta") or "").strip() or "👉 Link in bio"
+    blocks.append(cta)
 
-    hashtags = _hashtags(facts, fmt_label)
+    hashtags = _hashtags(dossier, fmt_label)
     caption = "\n\n".join(blocks)
     if hashtags:
         caption = f"{caption}\n\n{' '.join(hashtags)}"
@@ -255,6 +379,8 @@ def grounding_text(dossier: dict) -> str:
     brief = dossier.get("brief", {})
     lines: list[str] = []
 
+    if dossier.get("use_case"):
+        lines.append(f"Use case: {dossier['use_case']}")
     if brand.get("oneliner"):
         lines.append(f"Positioning: {brand['oneliner']}")
     if brand.get("audience"):
@@ -267,7 +393,7 @@ def grounding_text(dossier: dict) -> str:
 
     fact_lines: list[str] = []
     for label, key in (
-        ("Property", "title"), ("Location", "location"), ("Price", "price"),
+        ("Name", "title"), ("Location", "location"), ("Price", "price"),
         ("Host", "host"), ("Rating", "rating"),
     ):
         v = facts.get(key)
