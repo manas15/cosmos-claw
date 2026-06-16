@@ -15,7 +15,8 @@ long as it takes to hit the goal.**
 <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
 
-▶️ **[Watch the 60s demo](https://x.com/i/status/2065370878519468221)**
+*Built during the hack in the high seas of SF.* Catch every minute of the action
+from last Sunday on [my X](https://x.com/manassharmahere).
 
 </div>
 
