@@ -105,9 +105,9 @@ def api_job(job_id: str) -> JSONResponse:
     return JSONResponse({"job_id": job_id, **job})
 
 
-# --- Listings (Airbnb folders: photos + PDF) ---------------------------
+# --- Projects (folders: photos + optional PDF) -------------------------
 
-MAX_LISTING_PHOTOS = 14  # cap vision/generation cost; director picks the best
+MAX_LISTING_PHOTOS = 14  # cap vision/generation cost; the brief picks the best
 
 
 def _version_url(path: Path, stamp: float) -> str:
@@ -115,7 +115,7 @@ def _version_url(path: Path, stamp: float) -> str:
 
 
 def _poster_url(listing: listings.Listing) -> str | None:
-    """A nice cover image: a frame from the latest trailer, else photo 0."""
+    """A nice cover image: a frame from the latest cut, else photo 0."""
     lv = listings.latest_version(listing.id)
     if lv and lv["poster"] is not None:
         return _version_url(lv["poster"], lv["poster"].stat().st_mtime)

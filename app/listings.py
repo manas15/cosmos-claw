@@ -1,9 +1,10 @@
-"""Listing catalog: each folder under ``LISTINGS_DIR`` is one Airbnb listing.
+"""Project catalog: each folder under ``LISTINGS_DIR`` is one project.
 
-A listing folder holds the property photos (jpg/png/webp/avif/heic) plus a PDF
-export of the listing page. We scan that folder, extract the PDF text as the
-"facts" that ground the trailer, serve web-friendly JPEG thumbnails (AVIF/HEIC
-get normalized), and remember which listings already have a generated trailer.
+A project is just a folder of photos (jpg/png/webp/avif/heic) for any venue or
+brand, optionally with a PDF that carries extra context. We scan that folder,
+extract any PDF text as the "facts" that ground each cut, serve web-friendly
+JPEG thumbnails (AVIF/HEIC get normalized), and remember which projects already
+have a generated cut. (``listing``/``listing_id`` remain the stable on-disk id.)
 """
 
 from __future__ import annotations
@@ -98,7 +99,7 @@ def facts_for(listing: Listing) -> str:
     return extract_facts(str(listing.pdf))
 
 
-# Keyword signals for figuring out which trailer ingredients the PDF supports.
+# Keyword signals for figuring out which facts the PDF supports.
 _TRANSIT_KW = (
     "metro", "subway", "train", "station", "bus", "transit", "walk to",
     "min walk", "minute walk", "minutes to", "blocks from", "bike", "freeway",
@@ -279,7 +280,7 @@ def thumb(listing: Listing, idx: int) -> Path | None:
         return Path(result) if Path(result).exists() else None
 
 
-# --- generated-trailer bookkeeping --------------------------------------
+# --- generated-cut bookkeeping ------------------------------------------
 
 def video_path(listing_id: str) -> Path:
     return config.OUTPUT_DIR / f"listing_{listing_id}.mp4"

@@ -315,7 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("generate", help="Fire a dossier-grounded generation via the live API")
     g.add_argument("listing")
     g.add_argument("--format", default=config.DEFAULT_FORMAT)
-    g.add_argument("--note", default="", help="Extra director note for this cut")
+    g.add_argument("--note", default="", help="Extra note for this cut")
     g.set_defaults(func=cmd_generate)
 
     gl = sub.add_parser("goal", help="Inspect/set the north-star goals (followers, views, community)")
