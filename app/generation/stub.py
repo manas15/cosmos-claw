@@ -2,11 +2,10 @@
 
 This is the "simplest version first" stand-in for a real world model. It does
 NOT hallucinate new video; instead it animates the user's actual photo with a
-slow Ken Burns move. Captions, grading, and fades are added afterwards by the
-shared ``decorate`` step, so the stub and the real Cosmos backend produce
-identically-finished clips.
+slow Ken Burns move. It returns a raw motion clip — same contract as the real
+Cosmos backend — which the videographer then cuts and voices.
 
-The result is a real, shareable MP4 that exercises the entire Cosmos Claw pipeline
+The result is a real, shareable MP4 that exercises the entire Cosmos Claw loop
 end-to-end with zero GPU and zero cloud cost.
 """
 
@@ -33,10 +32,10 @@ class StubClipGenerator(ClipGenerator):
         return True, "ready"
 
     def generate_clip(self, scene: Scene, out_path: str, variant: int = 0) -> str:
-        """Produce a raw, motion-only clip (no captions/fades; decorate adds those).
+        """Produce a raw, motion-only clip (captions/voice are added later).
 
         The Ken Burns move is shaped by ``scene.shot`` and ``scene.motion_strength``
-        so the stub previews the director's intent, and ``variant`` perturbs the
+        so the stub previews the brief's intent, and ``variant`` perturbs the
         move (direction/amplitude/speed) so best-of-N takes are visibly different.
         """
         if not scene.source_path:

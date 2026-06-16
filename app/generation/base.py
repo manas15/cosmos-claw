@@ -1,13 +1,12 @@
 """Generation adapter interface.
 
-A ``ClipGenerator`` turns a single storyboard ``Scene`` (an input photo/frame +
-a prompt + timing) into a short video clip on disk. The rest of the pipeline
-(storyboard -> generate clips -> assemble final MP4) is identical regardless of
-which generator is used.
+A ``ClipGenerator`` turns a single ``Scene`` (an input photo/frame + a prompt +
+timing) into a short video clip on disk. The rest of the loop (film -> cut ->
+voice -> publish) is identical regardless of which generator is used.
 
 This is the seam that lets us start with a free, local FFmpeg-based generator
-and later swap in NVIDIA Cosmos 3 (running on a Nebius GPU) without touching the
-UI, the pipeline, or the assembly code.
+and later swap in NVIDIA Cosmos 3 (running on a Nebius GPU) — or any other model
+— without touching the UI or the videographer that films and cuts.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Scene:
-    """One segment of the day-in-the-life storyboard."""
+    """One beat of a cut: a single photo turned into a short motion clip."""
 
     index: int
     source_path: str | None  # input photo/video for this scene (None = text-only)
@@ -28,12 +27,12 @@ class Scene:
     time_of_day: str  # one of: morning | day | evening
     duration: float  # seconds
     # True when this beat stays in the same space as the previous one: the
-    # pipeline then seeds it with the previous clip's last frame for continuous
-    # motion. False (default) starts fresh from this beat's room photo.
+    # videographer then seeds it with the previous clip's last frame for
+    # continuous motion. False (default) starts fresh from this beat's photo.
     continues_prev: bool = False
     # --- cinematic motion (v2) ---
-    # Camera move label chosen by the director (e.g. "dolly-in with parallax").
-    # Drives both the generation prompt and the stub's Ken Burns fallback.
+    # Camera move label from the brief (e.g. "dolly-in with parallax"). Drives
+    # both the generation prompt and the stub's Ken Burns fallback.
     shot: str = ""
     # How bold the camera move is, 0..1 (0.35 calm, 0.85 dramatic). Scales the
     # generator's flow_shift and the stub's pan/zoom amplitude.

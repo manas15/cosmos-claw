@@ -9,8 +9,8 @@ be either:
     so a forker can drop in a better model without editing this repo.
 
 Every backend only has to implement ``generate_clip`` (+ optional ``available`` /
-``live`` health checks). The whole pipeline (vision -> film -> cut -> publish)
-is identical regardless of which model is plugged in.
+``live`` health checks). The whole loop (vision -> film -> cut -> publish) is
+identical regardless of which model is plugged in.
 """
 
 from __future__ import annotations

@@ -12,8 +12,8 @@ COSMOS_API_STYLE):
         multipart POST {base}/videos/sync with an `input_reference` image,
         returns the MP4 bytes directly.
 
-Captions/grading/fades are NOT done here; the shared ``decorate`` step finishes
-the raw clip so output matches the local stub.
+Captions/grading/fades are NOT done here; this returns a raw motion clip and the
+videographer cuts and voices it afterward (same contract as the local stub).
 """
 
 from __future__ import annotations
