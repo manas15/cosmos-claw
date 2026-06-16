@@ -2,278 +2,256 @@
 
 # 🪐 Cosmos Claw
 
-### Your always-on, AI-native videographer.
+### An always-on, AI-native videographer you run yourself.
 
-**Two AI agents — a marketing manager and a videographer — that run on your own
-machine, 24/7, for months, chasing one ambitious goal: build a real audience.**
+**Point two local AI agents at a folder of photos, give them an audacious goal,
+and let them research, film, voice, and publish social videos on repeat — for as
+long as it takes to hit the goal.**
 
-*Built for the **Yacht Hackathon** — by [@ComposioHQ](https://github.com/ComposioHQ), [@nebius](https://github.com/nebius), [@tavily-ai](https://github.com/tavily-ai) & [@openclaw](https://github.com/openclaw).*
+<p>
+<img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white">
+<img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+<img alt="Model: pluggable" src="https://img.shields.io/badge/video%20model-pluggable-8A2BE2">
+<img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
+</p>
+
+▶️ **[Watch the 60s demo](https://x.com/i/status/2065370878519468221)**
 
 [![Watch the demo](assets/demo-poster.jpg)](https://x.com/i/status/2065370878519468221)
-
-▶️ **[Watch the 60s demo on X](https://x.com/i/status/2065370878519468221)** &nbsp;·&nbsp; or play it inline below 👇
-
-<video src="https://github.com/manas15/cosmos-claw/raw/main/assets/demo.mp4" controls muted loop playsinline width="80%"></video>
 
 </div>
 
 ---
 
-## The experiment
+## The idea
 
-A human videographer is expensive, slow, and shoots one thing at a time. What if
-you replaced the whole studio — the manager, the camera, the editor — with **two
-agents that never sleep**, point them at a venue or brand, give them an audacious
-goal, and just... let them run?
+A human video team is expensive, slow, and shoots one thing at a time. Cosmos
+Claw replaces the studio with **two agents that never sleep**:
 
-That's the experiment Cosmos Claw is. You set the **north-star goals**:
+- a **marketing manager** that researches a brand, locks in its identity, and
+  ideates one fresh campaign at a time, and
+- a **videographer** that turns each brief into a 20–30s first-person POV reel,
+  voiced and cut for Instagram / TikTok.
 
-> 🎯 **10,000 Instagram followers · 1,000,000 TikTok views · 5,000 community interactions**
+You give them a **north-star goal** — say *10k Instagram followers* — and they run
+**locally, around the clock**, generating content on repeat. Every cut you post
+or discard, and every view it earns, feeds back in, so the unmistakable "AI slop"
+of the first dozen videos fades as the agents learn what *this* audience responds
+to.
 
-…and two agents chase them **locally, around the clock, for as long as it takes** —
-researching, ideating, filming, voicing, cutting, and publishing ready-to-post
-Reels and TikToks on repeat. The open question we're testing:
+> **The open question:** can two AI agents, left running for months, build
+> something people actually care about — and get *better* at it as they go?
 
-> **Can two AI agents, left running for months, actually build something people care about — and get *better* at it as they go?**
-
-The bet is that they will, because the loop **learns**. Every cut you post or
-discard, and every view/like/comment it earns, feeds back in — so the
-unmistakable "AI slop" of the first dozen videos fades as the agents distil
-durable lessons about what *this* audience actually responds to.
+This repo is the experiment. Fork it, point it at your own brand, swap in your
+own video model, and find out.
 
 ---
 
-## Loops and goals
+## How the loop works
 
-The design follows the **planner / doer / checker** loop (Boris Cherny's "loops
-and goals"): a long-lived agent system isn't a single prompt — it's a cycle that
-makes progress toward a measurable goal and corrects itself with real feedback.
+The design is a **planner / doer / checker** loop (Boris Cherny's "loops and
+goals"): a long-lived agent system isn't one prompt, it's a cycle that makes
+measurable progress toward a goal and corrects itself with real feedback.
 
 ```mermaid
 flowchart LR
-  Goals["🎯 North-star goals<br/>followers · views · community"]
-  Planner["🧠 Planner<br/>marketing manager<br/>(research → ideate)"]
-  Doer["🎥 Doer<br/>videographer<br/>(film → voice → cut → publish)"]
-  Checker["✅ Checker<br/>feedback loop<br/>(post/discard + performance → lessons)"]
+  Goals["North-star goals<br/>followers - views - community"]
+  Planner["Planner<br/>marketing manager<br/>research + ideate"]
+  Doer["Doer<br/>videographer<br/>film + voice + cut + publish"]
+  Checker["Checker<br/>feedback loop<br/>post/discard + performance"]
 
   Goals -->|"biggest gap = next focus"| Planner
   Planner -->|"creative brief"| Doer
   Doer -->|"ready-to-post cut"| Checker
-  Checker -->|"lessons (reduce slop)"| Planner
+  Checker -->|"lessons (less slop)"| Planner
   Checker -->|"metrics"| Goals
 ```
 
-- **Planner — the marketing manager.** GPT-4o studies the venue, locks in a
-  consistent brand, and brainstorms ONE fresh campaign per cut. It is *steered by
-  the goals*: whichever metric is furthest from target becomes the next focus.
-- **Doer — the videographer.** Turns the brief into a 20–30s first-person POV
-  reel with a unique voiceover over a mood-matched music bed, cut to 9:16.
-- **Checker — the feedback loop.** You post or discard each cut and log how it
-  performed; the system distils that into durable **lessons** ("avoid X, do more
-  Y") that flow back into the next idea. This is the slop-reducer.
+| Stage | What happens | Where |
+|-------|--------------|-------|
+| **Goals** | Big targets (followers / views / community). The largest remaining gap steers the next campaign. | [`app/goals.py`](app/goals.py) |
+| **Planner** | GPT-4o studies the photos, locks a consistent brand, and writes one fresh brief (angle, photo order, music, voice, caption, voiceover). | [`app/marketing_agent.py`](app/marketing_agent.py), [`app/brand.py`](app/brand.py) |
+| **Doer** | Films each photo into a short motion clip, cross-fades them, mixes a voiceover over a music bed, and publishes a ready-to-post cut. | [`app/videographer.py`](app/videographer.py) |
+| **Checker** | You post or discard each cut and log how it did; that distils into durable lessons fed back to the Planner. | [`app/feedback.py`](app/feedback.py) |
 
 The loop stops on exactly one condition: **the goals are met.** Otherwise it
-keeps going — for months if that's what it takes.
-
----
-
-## Use-case & model agnostic
-
-Nothing here is hardcoded to short-lets. A "project" is just a folder of photos
-plus a free-text **use case**, so the same loop works for a **café, gym, bar,
-product, event, or personal brand** — the brand voice, hashtags, and call-to-action
-all derive from the dossier, not from a rental schema. The two bundled examples —
-**House Rental** (`la-house-1`) and **Hacker House** (`hacker-house`) — are just
-references.
-
-The **video model is pluggable too.** Cosmos 3 is our default, but the backend is
-a registry of `ClipGenerator` adapters, and `LIVEHERE_BACKEND` accepts a dotted
-import path — so a forker can drop in a better model **without editing this repo**:
-
-```bash
-LIVEHERE_BACKEND=cosmos                              # default (self-hosted Cosmos 3)
-LIVEHERE_BACKEND=runway                              # or luma / kling / veo / pika / ltx / wan / svd
-LIVEHERE_BACKEND=openai_video                        # any OpenAI-compatible img→video server
-LIVEHERE_BACKEND=mypkg.my_model:AwesomeClipGenerator # bring your own
-```
-
-Every adapter only implements `generate_clip` (+ optional `available`/`live`
-health checks); the rest of the pipeline is identical regardless of model.
+keeps going.
 
 ---
 
 ## See it in action
 
-**1 — Raw photos in.** Drop a venue's existing images into the project. That's the
-only required input. *(Here: the Alamo Square Hacker House — bedrooms, gym, coworking.)*
+**1 — Raw photos in.** A "project" is just a folder of images for any venue or
+brand. That's the only required input.
 
 ![Raw images tab](assets/screens/raw-images.jpg)
 
-**2 — The marketing manager's memory.** An OpenClaw-style GPT-4o manager researches
-the venue, locks in a consistent brand (positioning, audience, tone, pitch, CTA),
-writes the voiceover, and picks the assets & order — the durable memory every video
-is grounded on, alongside the goals and the lessons learned so far.
+**2 — The manager's memory.** A GPT-4o manager researches the brand, locks a
+consistent identity (positioning, audience, tone, CTA), and keeps a durable
+dossier — including the goals and the lessons learned so far — that every video
+is grounded on.
 
 ![Memory tab — brand dossier](assets/screens/memory.jpg)
 
-**3 — Ready-to-post cuts out.** The Agent Loop streams everything the videographer
-does in real time. Each published cut is a ready-to-post package (video + caption +
-audio + handle) that you **post or flag as slop** — and the north-star progress bars
-tick up as the audience grows.
+**3 — Ready-to-post cuts out.** The Agent Loop streams everything in real time.
+Each cut is a complete package (video + caption + audio + handle) you post or flag
+as slop, and the north-star bars tick up as the audience grows.
 
 ![Agent Loop — published cut](assets/screens/agent-loop.jpg)
 
 ---
 
-## The stack
+## Status — what's real, and where you come in
 
-| Layer | What we used |
-|-------|--------------|
-| 🎥 **Video model** | **NVIDIA Cosmos 3 Nano** — a *world model* (built for robotics/embodied POV), **self-deployed by us** — and a pluggable adapter for any other model |
-| ⚡ **Compute** | **[Nebius AI Cloud](https://nebius.com)** — NVIDIA® **H200 NVLink** GPUs |
-| 🧠 **The two agents** | **GPT-4o (vision)** — studies the photos, brands the venue, ideates each goal-driven campaign, derives lessons |
-| 🔎 **Research** | **[Tavily](https://tavily.com)** — enriches each venue with real local context |
-| 🔊 **Audio** | **OpenAI TTS** — a unique per-cut voiceover over a mood-matched music bed |
-| 🧩 **App** | **FastAPI** Studio UI + an always-on `marketing_loop` daemon, FFmpeg for cutting/transitions |
+Cosmos Claw is an honest experiment, not a finished SaaS. Here's exactly what
+works today so you know what you're forking:
 
-We didn't just call a hosted API — we **stood up Cosmos 3 Nano ourselves** on
-Nebius H200 NVLink GPUs (vLLM-Omni, OpenAI-compatible) and drove it end-to-end.
+| Capability | State |
+|------------|-------|
+| Full loop on a laptop, **no GPU** (FFmpeg "stub" model: real Ken Burns motion) | ✅ works |
+| Brand memory, goals, feedback, lesson-learning, the Studio UI + CLI | ✅ works |
+| Photoreal first-person clips via **Cosmos 3** or any pluggable model | ✅ works |
+| Use-case agnostic (café / gym / product / creator, not just rentals) | ✅ works |
+| 24/7 daemon, resume-safe, self-healing, long-horizon durability | ✅ works |
+| **Auto-posting** to Instagram / TikTok | 🙋 manual today — *help wanted* |
+| **Auto-pulling live metrics** into goals | 🙋 manual today — *help wanted* |
 
-<sub>Shout-out to the partners: **@ship_builders · @nebiusai · @nvidia · @composio · @tavilyai · @openclaw**</sub>
-
----
-
-## How it works
-
-```
-north-star goals (followers · views · community)
-        │  biggest gap → focus
-        ▼
-  GPT-4o manager  ──→  brand dossier (positioning + durable assumptions + lessons)
-        │                     │
-        │                     ├─ Tavily ─→ research
-        │                     └─ ideate ─→ one fresh campaign (angle · photos ·
-        │                                   music · voice · caption · voiceover)
-        ▼
-  video model  ──→  a short first-person POV clip per beat  (Cosmos 3 by default,
-   (pluggable)                                                or any adapter)
-        │
-        ▼
-  transitions + audio  ──→  cross-fade · GPT voiceover · mood music · 9:16 reframe
-        │
-        ▼
-  ready-to-post cut.mp4  ──→  Agent Loop feed   ──→  human: post / discard + metrics
-        │                                                        │
-        └──────────  loop: next idea, steered by goals + lessons ◀┘
-```
-
-| File | Role |
-|------|------|
-| `scripts/marketing_loop.py` | **The always-on loop**: study → ideate → film → voice → publish → learn, per venue (parallel-safe), with goal-based stopping |
-| `app/marketing_agent.py` | GPT-4o marketing manager (the **Planner**): research → brand → goal-driven brief |
-| `app/videographer.py` | The **Doer**: `make_reel()` — the canonical film → voice → cut → publish skill |
-| `app/feedback.py` | The **Checker**: record post/discard + performance, derive durable lessons |
-| `app/goals.py` | North-star goals model: targets, progress, and the biggest-gap hint for ideation |
-| `app/vision.py` | GPT-4o photo analysis (asset labels + per-shot prompts) |
-| `app/brand.py` | Per-venue brand dossier — memory, durable assumptions, lessons, chronicle, posts |
-| `app/generation/factory.py` | Pluggable backend registry + dotted-path "bring your own model" loader |
-| `app/generation/cosmos.py` | NVIDIA Cosmos 3 image→video adapter (motion → flow-shift) |
-| `app/generation/openai_video.py` | Generic OpenAI-compatible img→video adapter (`VIDEO_*`) |
-| `app/generation/providers/` | Optional hosted/open adapters: runway · luma · kling · veo · pika · ltx · wan · svd |
-| `app/transitions.py` · `app/audio.py` | Cross-fade montage · TTS voiceover + mood music + duck-and-mux |
-| `app/main.py` · `app/agent.py` | FastAPI Studio UI/API · terminal CLI (run · goal · feedback · generate) |
-| `deploy/run_local.sh` · `deploy/*.plist` · `deploy/*.service` | 24/7 local daemon + launchd/systemd supervisors |
-
----
-
-## Running it 24/7
-
-The loop is the product. Point it at your projects and let it run — it is
-**resume-safe** (all state lives on disk) and **self-healing** (a live endpoint
-probe before every shot pauses on a network blip and resumes when it's back).
-
-```bash
-# one always-on worker per project, running concurrently, until the goals are met
-python scripts/marketing_loop.py --projects la-house-1   --tag la --until-goals
-python scripts/marketing_loop.py --projects hacker-house --tag hh --until-goals
-```
-
-For a true months-long run, supervise it so it survives crashes, logouts, and
-reboots. The wrapper restarts the loop on any exit; launchd/systemd is a backstop:
-
-```bash
-# macOS (launchd)        — edit the absolute paths inside the plist first
-cp deploy/com.cosmosclaw.loop.plist ~/Library/LaunchAgents/
-launchctl load -w ~/Library/LaunchAgents/com.cosmosclaw.loop.plist
-
-# Linux (systemd)        — edit User= and paths inside the unit first
-sudo cp deploy/cosmosclaw.service /etc/systemd/system/
-sudo systemctl enable --now cosmosclaw
-
-# or just background the wrapper directly
-nohup ./deploy/run_local.sh > /tmp/cosmosclaw_loop.log 2>&1 &
-```
-
-**Built for the long haul.** Dossier writes are atomic (a kill mid-write can't
-corrupt memory); the append-only activity/research logs are **compacted** into a
-bounded chronicle; old un-posted cuts are **pruned** off disk past a retention
-cap; and a **weekly reflection** distils lessons and records a milestone — so the
-agents keep a coherent long-term memory without the files growing forever. Tune it
-all via `ACTIVITY_CAP`, `VERSION_RETENTION`, `REFLECT_EVERY`, … in `.env`.
-
-### Driving it by hand
-
-The same brain runs from the **Human Drive** / **Agent Loop** tabs in the UI, or
-from the terminal:
-
-```bash
-python -m app.agent list                                   # projects + dossier status
-python -m app.agent run la-house-1                         # research → brand → brief
-python -m app.agent assume la-house-1 price "$245/night"   # lock a consistent fact
-python -m app.agent generate la-house-1 --format reel      # render one cut via the live API
-
-python -m app.agent goal show la-house-1                   # north-star progress
-python -m app.agent goal set  la-house-1 ig_followers --target 10000
-python -m app.agent goal current la-house-1 tt_views --value 25000
-
-python -m app.agent feedback post    la-house-1 <vid>      # ✅ ship it
-python -m app.agent feedback discard la-house-1 <vid> --note "voiceover felt generic"
-python -m app.agent feedback perf    la-house-1 <vid> --views 5200 --likes 410
-python -m app.agent feedback lessons la-house-1            # distil lessons now
-```
-
-Formats: `reel`, `tiktok` (9:16). The render canvas switches automatically.
+Today the agents produce *ready-to-post* cuts and you publish them and log the
+metrics (via the UI or `agent feedback perf`); goals advance from what you enter.
+Closing those last two links — a pluggable `Publisher` and a `MetricsSource` — is
+the most valuable thing a contributor can add. See [Contributing](#contributing).
 
 ---
 
 ## Quick start
 
-Requires Python 3.9+ and FFmpeg.
+Requires **Python 3.9+** and **FFmpeg**. No GPU needed to try it.
 
 ```bash
-cd LiveHere
+git clone https://github.com/manas15/cosmos-claw.git
+cd cosmos-claw
 
-brew install ffmpeg                 # one time
+brew install ffmpeg                 # macOS; apt-get install ffmpeg on Linux
 
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env                # add your keys (OpenAI, Tavily, video backend)
-
+cp .env.example .env                # add an OpenAI key for the GPT-4o brain
 python -m app                       # → http://127.0.0.1:8000
 ```
 
 Open <http://127.0.0.1:8000>, pick a project, and watch the Agent Loop. With no
-GPU configured it runs on the free local FFmpeg stub; point it at Cosmos (or any
-other model) for the real thing.
+video model configured it runs on the free local FFmpeg stub, so you can see the
+entire loop end-to-end for $0. Add an `OPENAI_API_KEY` for real ideation and
+voiceovers; point it at a video model (below) for photoreal motion.
 
 ---
 
-## Running the real Cosmos 3 backend
+## Run it 24/7
 
-The generation backend is swapped purely via env vars — **no code change** to the
-UI or pipeline.
+The loop is the product. Point it at your projects and let it run — it is
+**resume-safe** (all state lives on disk) and **self-healing** (it probes the
+video backend before every shot and pauses through a network blip).
+
+```bash
+# one always-on worker per project, in parallel, until each hits its goals
+python scripts/marketing_loop.py --projects la-house-1   --tag la --until-goals
+python scripts/marketing_loop.py --projects hacker-house --tag hh --until-goals
+```
+
+For a real months-long run, supervise it so it survives crashes and reboots:
+
+```bash
+# macOS (launchd) — edit the absolute paths inside the plist first
+cp deploy/com.cosmosclaw.loop.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.cosmosclaw.loop.plist
+
+# Linux (systemd) — edit User= and the paths inside the unit first
+sudo cp deploy/cosmosclaw.service /etc/systemd/system/
+sudo systemctl enable --now cosmosclaw
+
+# or just background the wrapper
+nohup ./deploy/run_local.sh > /tmp/cosmosclaw_loop.log 2>&1 &
+```
+
+**Built for the long haul:** dossier writes are atomic, append-only logs are
+compacted into a bounded chronicle, old un-posted cuts are pruned off disk, and a
+weekly reflection distils lessons — so memory stays coherent without files
+growing forever. Tune `ACTIVITY_CAP`, `VERSION_RETENTION`, `REFLECT_EVERY` in `.env`.
+
+### Drive it by hand
+
+The same brain runs from the **Human Drive** / **Agent Loop** tabs in the UI, or
+the terminal:
+
+```bash
+python -m app.agent list                                   # projects + dossier status
+python -m app.agent run la-house-1                         # research → brand → brief
+python -m app.agent generate la-house-1 --format reel      # render one cut
+
+python -m app.agent goal show la-house-1                   # north-star progress
+python -m app.agent goal set  la-house-1 ig_followers --target 10000
+python -m app.agent goal current la-house-1 tt_views --value 25000
+
+python -m app.agent feedback post    la-house-1 <vid>      # ship it
+python -m app.agent feedback discard la-house-1 <vid> --note "voiceover felt generic"
+python -m app.agent feedback perf    la-house-1 <vid> --views 5200 --likes 410
+python -m app.agent feedback lessons la-house-1            # distil lessons now
+```
+
+---
+
+## Make it yours
+
+### Any brand, any use case
+
+Nothing is hardcoded to rentals. A project is a folder of photos plus a free-text
+`use_case`, and the brand voice, hashtags, and CTA all derive from the dossier.
+The two bundled examples — **House Rental** (`la-house-1`) and **Hacker House**
+(`hacker-house`) — are just references; drop in your café, gym, product, or
+personal brand and the loop adapts.
+
+### Bring your own video model
+
+Cosmos 3 is the default, but the backend is a registry of `ClipGenerator`
+adapters and `LIVEHERE_BACKEND` accepts a **dotted import path**, so you can plug
+in any model without editing the repo:
+
+```bash
+LIVEHERE_BACKEND=cosmos                               # default (self-hosted Cosmos 3)
+LIVEHERE_BACKEND=runway                               # or luma / kling / veo / pika / ltx / wan / svd
+LIVEHERE_BACKEND=openai_video                         # any OpenAI-compatible img→video server
+LIVEHERE_BACKEND=my_pkg.my_model:AwesomeClipGenerator # your own class, anywhere on PYTHONPATH
+```
+
+A complete adapter is small — implement one method:
+
+```python
+# my_pkg/my_model.py
+from app.generation.base import ClipGenerator, Scene
+
+class AwesomeClipGenerator(ClipGenerator):
+    name = "awesome"
+
+    def available(self) -> tuple[bool, str]:
+        return True, "ready"          # cheap config-only check (keys present?)
+
+    def generate_clip(self, scene: Scene, out_path: str, variant: int = 0) -> str:
+        # turn scene.source_path + scene.prompt into a clip at out_path
+        my_render(scene.source_path, scene.prompt, scene.duration, out_path)
+        return out_path               # the rest of the loop is identical
+```
+
+That's it — the loop (vision → film → cut → voice → publish) is the same for
+every model. See [`app/generation/base.py`](app/generation/base.py) for the
+`Scene` fields and the optional `live()` health probe.
+
+---
+
+## Run the real Cosmos 3 backend
+
+The video backend is swapped purely via env vars — no code change:
 
 ```bash
 # .env
@@ -283,7 +261,7 @@ COSMOS_BASE_URL=http://<your-gpu-host>:8000/v1
 COSMOS_API_KEY=...
 ```
 
-We self-hosted it on a **Nebius H200 NVLink** instance with vLLM-Omni:
+We self-hosted Cosmos 3 Nano on a **Nebius H200 NVLink** instance with vLLM-Omni:
 
 ```bash
 vllm serve nvidia/Cosmos3-Nano --omni --host 0.0.0.0 --port 8000 --no-guardrails
@@ -291,10 +269,62 @@ vllm serve nvidia/Cosmos3-Nano --omni --host 0.0.0.0 --port 8000 --no-guardrails
 
 Full deploy walkthrough (Nebius / Modal / RunPod) is in
 [`deploy/DEPLOY.md`](deploy/DEPLOY.md). Cosmos can't run on Apple Silicon — keep
-the GPU instance up only while generating, and tear it down when idle.
+the GPU up only while generating.
 
 ---
 
-<div align="center">
-<sub>Cosmos Claw · made with ☕ for the Yacht Hackathon · Composio × Nebius × Tavily</sub>
-</div>
+## Project layout
+
+```
+app/
+  marketing_agent.py   Planner: research → brand → goal-driven brief
+  videographer.py      Doer: make_reel() — film → cut → voice → publish
+  feedback.py          Checker: post/discard + performance → lessons
+  goals.py             north-star targets, progress, biggest-gap hint
+  brand.py             per-project dossier (memory, lessons, posts, chronicle)
+  vision.py            GPT-4o photo analysis (labels + per-shot prompts)
+  transitions.py       cross-fade montage     audio.py   voiceover + music bed
+  generation/
+    base.py            ClipGenerator interface + Scene
+    factory.py         backend registry + "bring your own model" loader
+    cosmos.py          NVIDIA Cosmos 3 adapter      stub.py   free FFmpeg fallback
+    openai_video.py    generic OpenAI-compatible img→video server
+    providers/         runway · luma · kling · veo · pika · ltx · wan · svd
+  main.py              FastAPI Studio UI + API      agent.py   terminal CLI
+scripts/marketing_loop.py   the always-on driver (study → ideate → … → learn)
+deploy/                run_local.sh + launchd/systemd supervisors
+```
+
+---
+
+## Contributing
+
+This is meant to be hacked on. The highest-impact contributions right now close
+the loop to the real platforms:
+
+- **`Publisher` adapters** — auto-post a finished cut to Instagram (Graph API) /
+  TikTok, mirroring the `ClipGenerator` plug-in pattern (with a `manual` default).
+- **`MetricsSource` adapters** — poll a platform's API and call
+  `goals.ingest_performance()` so the north-star bars advance on their own.
+- **More `ClipGenerator` adapters** — wire up another image→video model.
+- **Smarter Checker** — better lesson distillation, scheduling, A/B of hooks.
+
+To get started: open an issue describing the change, keep modules focused and
+use generic (use-case-agnostic) terms, and run `python -m unittest discover tests`
+before sending a PR.
+
+---
+
+## Credits
+
+Built for the **Yacht Hackathon** by
+[@ComposioHQ](https://github.com/ComposioHQ),
+[@nebius](https://github.com/nebius),
+[@tavily-ai](https://github.com/tavily-ai) &
+[@openclaw](https://github.com/openclaw).
+Video model: **NVIDIA Cosmos 3 Nano**. Compute: **Nebius H200 NVLink**. Brain:
+**GPT-4o**. Research: **Tavily**.
+
+## License
+
+[MIT](LICENSE) — fork it, ship it, build your own experiment on top of it.
