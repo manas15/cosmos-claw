@@ -24,15 +24,15 @@ from last Sunday on [my X](https://x.com/manassharmahere).
 
 ## The idea
 
-A human video team is expensive, slow, and shoots one thing at a time. Cosmos
-Claw replaces the studio with **two agents that never sleep**:
+Human social media managers are expensive and slow. Cosmos Claw replaces them
+with **an AI agent pair that never sleeps**:
 
-- a **marketing manager** that researches a brand, locks in its identity, and
-  ideates one fresh campaign at a time, and
-- a **videographer** that turns each brief into a 20–30s first-person POV reel,
-  voiced and cut for Instagram / TikTok.
+1. a **marketing manager** that researches a brand, locks in its identity, and
+   ideates one fresh campaign at a time, and
+2. a **videographer** that turns each brief into a 20–30s first-person POV reel,
+   voiced and cut for IG / TikTok.
 
-You give them a **north-star goal** — say *10k Instagram followers* — and they run
+You give them a **north-star goal** (say *10k Instagram followers*) and they run
 **locally, around the clock**, generating content on repeat. Every cut you post
 or discard, and every view it earns, feeds back in, so the unmistakable "AI slop"
 of the first dozen videos fades as the agents learn what *this* audience responds
