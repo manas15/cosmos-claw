@@ -324,6 +324,8 @@ Built for the **Yacht Hackathon** by
 Video model: **NVIDIA Cosmos 3 Nano**. Compute: **Nebius H200 NVLink**. Brain:
 **GPT-4o**. Research: **Tavily**.
 
+![The crew at the Yacht Hackathon, San Francisco Bay](assets/yacht-hackathon-team.jpg)
+
 ## License
 
 [MIT](LICENSE) — fork it, ship it, build your own experiment on top of it.
