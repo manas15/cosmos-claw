@@ -2,7 +2,7 @@
 
 # 🪐 Cosmos Claw
 
-### An always-on, AI-native videographer you run yourself.
+### An always-on, AI-native social media team you run yourself.
 
 **Point two local AI agents at a folder of photos, give them an audacious goal,
 and let them research, film, voice, and publish social videos on repeat — for as
