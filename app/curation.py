@@ -1,7 +1,7 @@
 """Best-of-N take scoring.
 
-When the pipeline renders several takes for one beat (varied seed / motion), we
-need to auto-pick the strongest one. We want clips that have real, *cinematic*
+When the videographer renders several takes for one beat (varied seed / motion),
+we need to auto-pick the strongest one. We want clips that have real, *cinematic*
 motion but stay *smooth and stable* — i.e. avoid both dead-static takes and the
 warping/flicker failure mode where the model tears the frame apart.
 
@@ -23,7 +23,7 @@ from pathlib import Path
 from .ffmpeg_utils import run_ffmpeg
 
 # Target mean frame-diff (on a 0..1 scale). Tuned for "deliberate cinematic
-# motion" — above dead-static, below warpy. Override via the pipeline if needed.
+# motion" — above dead-static, below warpy. Override per call if needed.
 _TARGET_MOTION = 0.055
 _MOTION_SPREAD = 0.045
 _SAMPLE_FPS = 4

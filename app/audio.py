@@ -1,11 +1,11 @@
-"""Audio for the listing trailer: a soft music bed + AI voiceover, mixed in.
+"""Audio for a generated cut: a soft music bed + AI voiceover, mixed in.
 
 - ``synth_music_bed`` builds a gentle, licensing-safe ambient pad with ffmpeg
   (a soft minor chord + slow tremolo + lowpass). Override with a real track via
   the ``MUSIC_PATH`` env var.
-- ``tts_voiceover`` uses OpenAI text-to-speech to narrate the director's script.
+- ``tts_voiceover`` uses OpenAI text-to-speech to narrate the voiceover script.
 - ``mux_audio`` layers the voiceover over the (ducked) music bed and attaches it
-  to the silent trailer video, trimmed to the video's length.
+  to the silent cut, trimmed to the video's length.
 """
 
 from __future__ import annotations

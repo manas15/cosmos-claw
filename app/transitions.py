@@ -1,9 +1,9 @@
 """Fast, pretty transitions between clips via ffmpeg's xfade.
 
-Unlike ``assembly.concat_clips`` (hard dip-to-black joins), this cross-dissolves
-neighbouring clips with short, varied transitions (fade, wipe, slide, circle…)
-for a snappy social-montage feel. All inputs are normalised to one canvas /
-fps / pixel-format / SAR first so xfade doesn't choke on mismatched streams.
+Instead of hard dip-to-black joins, this cross-dissolves neighbouring clips with
+short, varied transitions (fade, wipe, slide, circle…) for a snappy
+social-montage feel. All inputs are normalised to one canvas / fps /
+pixel-format / SAR first so xfade doesn't choke on mismatched streams.
 """
 
 from __future__ import annotations
