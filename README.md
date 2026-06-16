@@ -22,7 +22,7 @@ from last Sunday on [my X](https://x.com/manassharmahere).
 
 ---
 
-## The idea
+## The idea / Research hypothesis
 
 Human social media managers are expensive and slow. Cosmos Claw replaces them
 with **an AI agent pair that never sleeps**:
